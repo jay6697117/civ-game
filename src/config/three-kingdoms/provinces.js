@@ -1,0 +1,15 @@
+export const THREE_KINGDOMS_PROVINCES = [
+    { id: 'sili', name: '司隶', terrain: 'plains', neighbors: ['jizhou', 'yanzhou', 'yuzhou', 'liangzhou', 'jingzhou'] },
+    { id: 'jizhou', name: '冀州', terrain: 'plains', neighbors: ['sili', 'youzhou', 'qingzhou', 'yanzhou'] },
+    { id: 'youzhou', name: '幽州', terrain: 'mountain', neighbors: ['jizhou'] },
+    { id: 'qingzhou', name: '青州', terrain: 'coast', neighbors: ['jizhou', 'xuzhou', 'yanzhou'] },
+    { id: 'xuzhou', name: '徐州', terrain: 'plains', neighbors: ['qingzhou', 'yanzhou', 'yuzhou', 'yangzhou'] },
+    { id: 'yanzhou', name: '兖州', terrain: 'plains', neighbors: ['sili', 'jizhou', 'qingzhou', 'xuzhou', 'yuzhou'] },
+    { id: 'yuzhou', name: '豫州', terrain: 'plains', neighbors: ['sili', 'yanzhou', 'xuzhou', 'yangzhou', 'jingzhou'] },
+    { id: 'yangzhou', name: '扬州', terrain: 'river', neighbors: ['xuzhou', 'yuzhou', 'jingzhou', 'jiaozhou'] },
+    { id: 'jingzhou', name: '荆州', terrain: 'river', neighbors: ['sili', 'yuzhou', 'yangzhou', 'yizhou', 'jiaozhou'] },
+    { id: 'yizhou', name: '益州', terrain: 'mountain', neighbors: ['liangzhou', 'jingzhou'] },
+    { id: 'liangzhou', name: '凉州', terrain: 'steppe', neighbors: ['sili', 'yizhou'] },
+    { id: 'jiaozhou', name: '交州', terrain: 'jungle', neighbors: ['yangzhou', 'jingzhou'] },
+    { id: 'bingzhou', name: '并州', terrain: 'steppe', neighbors: ['jizhou', 'sili'] },
+];

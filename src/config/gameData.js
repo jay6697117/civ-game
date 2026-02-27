@@ -10,6 +10,12 @@ import { TECHS } from './technologies';
 import { COUNTRIES } from './countries';
 import { MILITARY_ACTIONS } from './militaryActions';
 import {
+  THREE_KINGDOMS_FACTIONS,
+  THREE_KINGDOMS_TIER_BUCKETS,
+  THREE_KINGDOMS_PROVINCES,
+  THREE_KINGDOMS_GENERALS
+} from './three-kingdoms';
+import {
   DIPLOMACY_ERA_UNLOCK,
   TREATY_CONFIGS,
   TREATY_TYPE_LABELS,
@@ -66,6 +72,12 @@ export {
   
   // 固定军事行动
   MILITARY_ACTIONS,
+
+  // 三国战役配置
+  THREE_KINGDOMS_FACTIONS,
+  THREE_KINGDOMS_TIER_BUCKETS,
+  THREE_KINGDOMS_PROVINCES,
+  THREE_KINGDOMS_GENERALS,
 
   // 外交扩展配置
   DIPLOMACY_ERA_UNLOCK,

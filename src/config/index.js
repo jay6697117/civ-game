@@ -144,3 +144,11 @@ export {
     getOwnerTypeIcon,
     getOwnerTypeColors
 } from './ownerTypes.js';
+
+// 三国战役配置
+export {
+    THREE_KINGDOMS_FACTIONS,
+    THREE_KINGDOMS_TIER_BUCKETS,
+    THREE_KINGDOMS_PROVINCES,
+    THREE_KINGDOMS_GENERALS,
+} from './three-kingdoms/index.js';

@@ -88,6 +88,15 @@ import {
     getBasePrices,
     ECONOMIC_INDICATOR_CONFIG,
 } from '../logic/economy/economicIndicators';
+import { resolveTurn } from '../logic/three-kingdoms/resolveTurn';
+
+export const TURN_INTERVAL_DAYS = 10;
+export const shouldResolveCampaignTurn = ({ gameMode, daysElapsed }) => (
+    gameMode === 'three_kingdoms'
+    && Number.isFinite(daysElapsed)
+    && daysElapsed > 0
+    && daysElapsed % TURN_INTERVAL_DAYS === 0
+);
 
 const calculateRebelPopulation = (stratumPop = 0) => {
     if (!Number.isFinite(stratumPop) || stratumPop <= 0) return 0;
@@ -464,6 +473,12 @@ export const useGameLoop = (gameState, addLog, actions) => {
         gameSpeed,
         isPaused,
         setIsPaused,
+        gameMode,
+        campaignState,
+        setCampaignState,
+        turnQueue,
+        setTurnQueue,
+        commitTurn,
         nations,
         setNations,
         diplomaticReputation,
@@ -606,6 +621,10 @@ export const useGameLoop = (gameState, addLog, actions) => {
         techsUnlocked,
         decrees,
         gameSpeed,
+        gameMode,
+        campaignState,
+        turnQueue,
+        commitTurn,
         nations,
         classWealth,
         army,
@@ -734,6 +753,10 @@ export const useGameLoop = (gameState, addLog, actions) => {
             techsUnlocked,
             decrees,
             gameSpeed,
+            gameMode,
+            campaignState,
+            turnQueue,
+            commitTurn,
             nations,
             classWealth,
             livingStandardStreaks,
@@ -790,7 +813,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
             foreignInvestments, // [NEW] 海外投资
             diplomaticReputation, // [FIX] 外交声誉
         };
-    }, [resources, market, buildings, buildingUpgrades, population, popStructure, maxPopBonus, epoch, techsUnlocked, decrees, gameSpeed, nations, livingStandardStreaks, migrationCooldowns, taxShock, army, militaryQueue, jobFill, jobsAvailable, activeBuffs, activeDebuffs, taxPolicies, classWealthHistory, classNeedsHistory, militaryWageRatio, classApproval, daysElapsed, activeFestivalEffects, lastFestivalYear, isPaused, autoSaveInterval, isAutoSaveEnabled, lastAutoSaveTime, merchantState, tradeRoutes, diplomacyOrganizations, vassalDiplomacyQueue, vassalDiplomacyHistory, tradeStats, actions, actionCooldowns, actionUsage, promiseTasks, activeEventEffects, eventEffectSettings, rebellionStates, classInfluence, totalInfluence, birthAccumulator, stability, rulingCoalition, legitimacy, difficulty, officials, officialsSimCursor, activeDecrees, expansionSettings, quotaTargets, officialCapacity, ministerAssignments, ministerAutoExpansion, lastMinisterExpansionDay, priceControls, foreignInvestments, diplomaticReputation]);
+    }, [resources, market, buildings, buildingUpgrades, population, popStructure, maxPopBonus, epoch, techsUnlocked, decrees, gameSpeed, gameMode, campaignState, turnQueue, commitTurn, nations, livingStandardStreaks, migrationCooldowns, taxShock, army, militaryQueue, jobFill, jobsAvailable, activeBuffs, activeDebuffs, taxPolicies, classWealthHistory, classNeedsHistory, militaryWageRatio, classApproval, daysElapsed, activeFestivalEffects, lastFestivalYear, isPaused, autoSaveInterval, isAutoSaveEnabled, lastAutoSaveTime, merchantState, tradeRoutes, diplomacyOrganizations, vassalDiplomacyQueue, vassalDiplomacyHistory, tradeStats, actions, actionCooldowns, actionUsage, promiseTasks, activeEventEffects, eventEffectSettings, rebellionStates, classInfluence, totalInfluence, birthAccumulator, stability, rulingCoalition, legitimacy, difficulty, officials, officialsSimCursor, activeDecrees, expansionSettings, quotaTargets, officialCapacity, ministerAssignments, ministerAutoExpansion, lastMinisterExpansionDay, priceControls, foreignInvestments, diplomaticReputation]);
     // Note: classWealth is intentionally excluded from dependencies to prevent infinite loop
     // when setClassWealth is called inside Promise chains within this effect.
     // The latest classWealth value is available via stateRef.current.classWealth
@@ -931,6 +954,34 @@ export const useGameLoop = (gameState, addLog, actions) => {
                 if (elapsed >= intervalSeconds * 1000 && saveGameRef.current) {
                     saveGameRef.current({ source: 'auto' });
                     stateRef.current.lastAutoSaveTime = Date.now();
+                }
+            }
+
+            // 三国战役回合：在日 Tick 上叠加 10 天一回合的战略结算
+            const currentDay = current.daysElapsed || 0;
+            if (shouldResolveCampaignTurn({ gameMode: current.gameMode, daysElapsed: currentDay }) && current.campaignState) {
+                const turnResult = resolveTurn(
+                    { campaignState: current.campaignState },
+                    current.turnQueue || [],
+                    currentDay,
+                );
+
+                if (turnResult?.nextCampaignState) {
+                    setCampaignState(turnResult.nextCampaignState);
+                    stateRef.current.campaignState = turnResult.nextCampaignState;
+                }
+
+                if (Array.isArray(turnResult?.logs) && turnResult.logs.length > 0) {
+                    turnResult.logs.forEach((log) => addLog(`🗺️ ${log}`));
+                }
+
+                if (Array.isArray(current.turnQueue) && current.turnQueue.length > 0) {
+                    if (typeof current.commitTurn === 'function') {
+                        current.commitTurn();
+                    } else {
+                        setTurnQueue([]);
+                    }
+                    stateRef.current.turnQueue = [];
                 }
             }
 

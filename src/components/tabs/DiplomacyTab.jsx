@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, memo } from 'react';
+import React, { useMemo, useState, memo } from 'react';
 import { DeclareWarModal } from '../modals/DeclareWarModal';
 import TradeRoutesModal from '../modals/TradeRoutesModal';
 import { OverseasInvestmentPanel } from '../panels/OverseasInvestmentPanel';
@@ -42,11 +42,8 @@ const DiplomacyTabComponent = ({
     onDiplomaticAction,
     tradeRoutes = { routes: [] },
     tradeOpportunities = { exports: [], imports: [] },
-    onTradeRouteAction,
     merchantState = { merchantAssignments: {} },
     onMerchantStateChange,
-    playerInstallmentPayment = null,
-    jobsAvailable = {},
     popStructure = {},
     taxPolicies = {},
     diplomaticCooldownMod = 0,
@@ -54,7 +51,6 @@ const DiplomacyTabComponent = ({
     classWealth = {},
     diplomacyOrganizations = { organizations: [] },
     gameState = {},
-    population = {},
     foreignInvestments = [],
     foreignInvestmentPolicy = 'normal',
     vassalDiplomacyQueue = [],
@@ -107,19 +103,16 @@ const DiplomacyTabComponent = ({
         [nations, epoch]
     );
 
-    const checkNationSelection = () => {
-        // Only reset if the currently selected nation is no longer visible (e.g. destroyed)
-        if (selectedNationId && !visibleNations.some((n) => n.id === selectedNationId)) {
-            setSelectedNationId(null);
-        }
-    };
+    const effectiveSelectedNationId = useMemo(() => (
+        selectedNationId && visibleNations.some((nation) => nation.id === selectedNationId)
+            ? selectedNationId
+            : null
+    ), [selectedNationId, visibleNations]);
 
-    useEffect(() => {
-        checkNationSelection();
-    }, [selectedNationId, visibleNations]);
-
-    const selectedNation =
-        visibleNations.find((nation) => nation.id === selectedNationId) || null;
+    const selectedNation = useMemo(
+        () => visibleNations.find((nation) => nation.id === effectiveSelectedNationId) || null,
+        [visibleNations, effectiveSelectedNationId]
+    );
 
     const getNationRelationInfo = (nation) => {
         if (!nation) return { value: 0, ...relationInfo(0, false) };
@@ -163,63 +156,61 @@ const DiplomacyTabComponent = ({
         });
     };
 
-    if (isCampaignMode) {
-        return (
-            <div className="space-y-3">
-                <div className="rounded-lg border border-amber-500/35 bg-amber-950/20 p-3">
-                    <h3 className="text-sm font-semibold text-amber-200">战役外交命令台</h3>
-                    <p className="text-xs text-gray-300 mt-1">当前操作会写入回合命令队列，在 10 天战略回合时统一结算。</p>
+    const campaignModeView = (
+        <div className="space-y-3">
+            <div className="rounded-lg border border-amber-500/35 bg-amber-950/20 p-3">
+                <h3 className="text-sm font-semibold text-amber-200">战役外交命令台</h3>
+                <p className="text-xs text-gray-300 mt-1">当前操作会写入回合命令队列，在 10 天战略回合时统一结算。</p>
+            </div>
+
+            {campaignDiplomacyTargets.length === 0 && (
+                <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3 text-xs text-gray-400">
+                    暂无可用外交目标。
                 </div>
+            )}
 
-                {campaignDiplomacyTargets.length === 0 && (
-                    <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3 text-xs text-gray-400">
-                        暂无可用外交目标。
-                    </div>
-                )}
-
-                <div className="space-y-2.5">
-                    {campaignDiplomacyTargets.map((target) => (
-                        <div
-                            key={target.id}
-                            className="rounded-lg border border-gray-700 bg-gray-900/50 p-3"
-                        >
-                            <div className="flex items-center justify-between gap-2">
-                                <div>
-                                    <div className="text-sm font-semibold text-gray-100">{target.name}</div>
-                                    <div className="text-[11px] text-gray-400 mt-0.5">
-                                        关系值：{target.relation} · 档位：{target.tier}
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-1.5">
-                                    {CAMPAIGN_DIPLOMACY_ACTIONS.map((actionItem) => (
-                                        <button
-                                            key={`${target.id}-${actionItem.id}`}
-                                            type="button"
-                                            onClick={() => handleCampaignDiplomacyAction(target.id, actionItem.id)}
-                                            className="rounded-md border border-amber-500/35 bg-amber-600/10 px-2 py-1 text-[11px] text-amber-100 hover:bg-amber-500/20 transition-colors"
-                                        >
-                                            {actionItem.label}
-                                        </button>
-                                    ))}
+            <div className="space-y-2.5">
+                {campaignDiplomacyTargets.map((target) => (
+                    <div
+                        key={target.id}
+                        className="rounded-lg border border-gray-700 bg-gray-900/50 p-3"
+                    >
+                        <div className="flex items-center justify-between gap-2">
+                            <div>
+                                <div className="text-sm font-semibold text-gray-100">{target.name}</div>
+                                <div className="text-[11px] text-gray-400 mt-0.5">
+                                    关系值：{target.relation} · 档位：{target.tier}
                                 </div>
                             </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                                {CAMPAIGN_DIPLOMACY_ACTIONS.map((actionItem) => (
+                                    <button
+                                        key={`${target.id}-${actionItem.id}`}
+                                        type="button"
+                                        onClick={() => handleCampaignDiplomacyAction(target.id, actionItem.id)}
+                                        className="rounded-md border border-amber-500/35 bg-amber-600/10 px-2 py-1 text-[11px] text-amber-100 hover:bg-amber-500/20 transition-colors"
+                                    >
+                                        {actionItem.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    ))}
-                </div>
-
-                {negotiationFeedback?.message && (
-                    <div className={`rounded-md border px-3 py-2 text-xs ${
-                        negotiationFeedback.type === 'error'
-                            ? 'border-red-500/35 bg-red-950/20 text-red-200'
-                            : 'border-emerald-500/35 bg-emerald-950/20 text-emerald-200'
-                    }`}
-                    >
-                        {negotiationFeedback.message}
                     </div>
-                )}
+                ))}
             </div>
-        );
-    }
+
+            {negotiationFeedback?.message && (
+                <div className={`rounded-md border px-3 py-2 text-xs ${
+                    negotiationFeedback.type === 'error'
+                        ? 'border-red-500/35 bg-red-950/20 text-red-200'
+                        : 'border-emerald-500/35 bg-emerald-950/20 text-emerald-200'
+                }`}
+                >
+                    {negotiationFeedback.message}
+                </div>
+            )}
+        </div>
+    );
 
     // --- Helpers & Logic ---
 
@@ -468,6 +459,10 @@ const DiplomacyTabComponent = ({
         return militaryOrgs;
     }, [visibleNations, selectedNation, diplomacyOrganizations]);
 
+    if (isCampaignMode) {
+        return campaignModeView;
+    }
+
     // Simple Actions
     const handleSimpleAction = (nationId, action, payload) => {
         if (onDiplomaticAction) {
@@ -481,7 +476,7 @@ const DiplomacyTabComponent = ({
             <DiplomacyLayout
                 nations={nations}
                 visibleNations={visibleNations}
-                selectedNationId={selectedNationId}
+                selectedNationId={effectiveSelectedNationId}
                 onSelectNation={setSelectedNationId}
                 selectedNation={selectedNation}
                 gameState={gameState}
@@ -722,7 +717,7 @@ const DiplomacyTabComponent = ({
                         onDiplomaticAction('player', 'leave_org', { orgId });
                     }
                 }}
-                onNegotiateWithFounder={(founderNation, organization) => {
+                onNegotiateWithFounder={(founderNation) => {
                     // Close the organization modal and open negotiation with founder
                     setShowOrganizationModal(false);
                     setSelectedOrganization(null);

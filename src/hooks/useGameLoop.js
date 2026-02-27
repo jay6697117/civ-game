@@ -1,7 +1,7 @@
 // 游戏循环钩子
 // 处理游戏的核心循环逻辑，包括资源生产、人口增长等
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { unstable_batchedUpdates } from 'react-dom';
 import { useSimulationWorker } from './useSimulationWorker';
 import {
@@ -42,7 +42,7 @@ import {
     createVassalRequestEvent,
     REBEL_DEMAND_SURRENDER_TYPE,
 } from '../config/events';
-import { calculateTotalDailySalary, getCabinetStatus, calculateOfficialCapacity } from '../logic/officials/manager';
+import { calculateTotalDailySalary, getCabinetStatus } from '../logic/officials/manager';
 import { processDecreeExpiry, getAllTimedDecrees } from '../logic/officials/cabinetSynergy';
 // 新版组织度系统
 import {
@@ -53,7 +53,6 @@ import {
     checkCoalitionRebellion,
     COALITION_REBELLION_CONFIG,
 } from '../logic/organizationSystem';
-import { calculateAllPenalties } from '../logic/organizationPenalties';
 // 联合叛乱系统
 import {
     createCoalitionRebelNation,
@@ -75,11 +74,12 @@ import {
     createRebelNation,
     createRebellionEndEvent,
 } from '../logic/rebellionSystem';
-import { getTreatyDailyMaintenance, INDEPENDENCE_CONFIG } from '../config/diplomacy';
+import { INDEPENDENCE_CONFIG } from '../config/diplomacy';
 import { processVassalUpdates } from '../logic/diplomacy/vassalSystem';
 import { checkVassalRequests } from '../logic/diplomacy/aiDiplomacy';
 import { LOYALTY_CONFIG } from '../config/officials';
 import { updateAllOfficialsDaily } from '../logic/officials/progression';
+import { formatNumberShortCN } from '../utils/numberFormat';
 // 经济指标系统
 import {
     updatePriceHistory,
@@ -122,12 +122,6 @@ const getMilitaryCapacity = (buildingState = {}) => {
         }
     });
     return capacity;
-};
-
-const getTotalArmyCount = (armyState = {}, queueState = []) => {
-    const armyCount = Object.values(armyState || {}).reduce((sum, count) => sum + (count || 0), 0);
-    const queueCount = Array.isArray(queueState) ? queueState.length : 0;
-    return armyCount + queueCount;
 };
 
 const formatUnitSummary = (unitMap = {}) => {
@@ -241,7 +235,6 @@ const syncArmyWithSoldierPopulation = (armyState = {}, queueState = [], availabl
                 count,
                 popCost: getUnitPopulationCost(unitId),
                 epoch: UNIT_TYPES[unitId]?.epoch ?? 0,
-                trainingTime: UNIT_TYPES[unitId]?.trainingTime || 1, // [NEW] 记录训练时间用于重新排队
             }))
             .sort((a, b) => {
                 // 优先解散人口消耗高的单位
@@ -253,7 +246,7 @@ const syncArmyWithSoldierPopulation = (armyState = {}, queueState = [], availabl
 
         for (const entry of armyEntries) {
             if (manpowerToRemove <= 0) break;
-            const { unitId, popCost, trainingTime } = entry;
+            const { unitId, popCost } = entry;
             const removable = Math.min(entry.count, Math.ceil(manpowerToRemove / popCost));
             if (removable <= 0) continue;
 
@@ -492,6 +485,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
         setPopStructure,
         setMaxPop,
         maxPopBonus,
+        setMaxPopBonus,
         setRates,
         setTaxes,
         setClassApproval,
@@ -535,7 +529,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
         setJobFill,
         jobsAvailable,
         setJobsAvailable,
-        buildingJobsRequired,
         setBuildingJobsRequired,
         setDaysElapsed,
         daysElapsed,
@@ -558,7 +551,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
         autoSaveInterval,
         isAutoSaveEnabled,
         lastAutoSaveTime,
-        saveGame,
         merchantState,
         setMerchantState,
         tradeRoutes,
@@ -573,7 +565,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
         actionCooldowns,
         setActionCooldowns,
         actionUsage,
-        setActionUsage,
         promiseTasks,
         setPromiseTasks,
         activeEventEffects,
@@ -667,7 +658,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
         rebellionStates,
         classInfluence,
         totalInfluence,
-        birthAccumulator,
         stability,
         rulingCoalition, // 执政联盟成员
         legitimacy, // 当前合法性值
@@ -684,7 +674,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
     });
 
     const saveGameRef = useRef(gameState.saveGame);
-    const autoReplenishTickRef = useRef({ day: null, key: '' });
     const capacityTrimLogRef = useRef({ day: null });
     const AUTO_RECRUIT_BATCH_LIMIT = 3;
     const AUTO_RECRUIT_FAIL_COOLDOWN = 5000;
@@ -839,8 +828,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
                 .map(n => n.id)
         );
 
-        let needsUpdate = false;
-
         // Clean up trade routes
         if (tradeRoutes?.routes?.length) {
             const currentLength = tradeRoutes.routes.length;
@@ -852,7 +839,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
                         routes: validRoutes
                     }));
                     lastCleanupRef.current.tradeRoutesLength = validRoutes.length;
-                    needsUpdate = true;
                 } else {
                     lastCleanupRef.current.tradeRoutesLength = currentLength;
                 }
@@ -888,7 +874,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
                         merchantAssignments: finalAssignments
                     }));
                     lastCleanupRef.current.merchantAssignmentsKeys = Object.keys(finalAssignments).sort().join(',');
-                    needsUpdate = true;
 
                     // Log cleanup action
                     if (Object.keys(validAssignments).length === 0) {
@@ -915,7 +900,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
                         pendingTrades: validPendingTrades
                     }));
                     lastCleanupRef.current.pendingTradesLength = validPendingTrades.length;
-                    needsUpdate = true;
                 } else {
                     lastCleanupRef.current.pendingTradesLength = currentLength;
                 }
@@ -926,7 +910,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
     // 游戏核心循环
     useEffect(() => {
         // 初始化作弊码系统
-        if (process.env.NODE_ENV !== 'production') {
+        if (import.meta.env.DEV) {
             initCheatCodes(gameState, addLog, { setMerchantState, setTradeRoutes });
         }
 
@@ -1100,9 +1084,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
             // 检查是否需要触发年度庆典
             // 修复：检测年份变化而非特定日期，避免加速模式下跳过触发点
             const currentCalendar = getCalendarInfo(current.daysElapsed || 0);
-            // 注意：这里使用 1 而非 current.gameSpeed，因为现在每次 Tick 只推进 1 天
-            const nextCalendar = getCalendarInfo((current.daysElapsed || 0) + 1);
-
             // 如果当前年份大于上次庆典年份，且即将跨越或已经跨越新年
             if (currentCalendar.year > (current.lastFestivalYear || 0)) {
                 // 新的一年开始，触发庆典
@@ -1326,8 +1307,8 @@ export const useGameLoop = (gameState, addLog, actions) => {
             };
 
             const perfEnabled = typeof window !== 'undefined'
-                ? (window.__PERF_LOG ?? process.env.NODE_ENV !== 'production')
-                : process.env.NODE_ENV !== 'production';
+                ? (window.__PERF_LOG ?? import.meta.env.DEV)
+                : import.meta.env.DEV;
 
             if (perfEnabled) {
                 console.warn(`[PerfTick] start day=${current.daysElapsed || 0}`);
@@ -1435,13 +1416,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
                         }
                     }
                 }
-
-                const hadActiveEffects =
-                    (current.activeEventEffects?.approval?.length || 0) > 0 ||
-                    (current.activeEventEffects?.stability?.length || 0) > 0 ||
-                    (current.activeEventEffects?.resourceDemand?.length || 0) > 0 ||
-                    (current.activeEventEffects?.stratumDemand?.length || 0) > 0 ||
-                    (current.activeEventEffects?.buildingProduction?.length || 0) > 0;
 
                 const adjustedResources = { ...result.resources };
                 const resourceShortages = {}; // 记录资源短缺（由 simulation 记录时这里为空）
@@ -1572,39 +1546,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
                         // console.log(`    💰 总支出: ${simulationArmyCost.toFixed(2)} 银币`);
                     }
                     // console.groupEnd();
-                }
-
-                // 保留useGameLoop中的军队维护计算（仅用于对比，标记为"本地计算"）
-                if (false) { // 禁用旧的统计方式
-                    const maintenanceResources = {};
-                    let totalMaintenanceSilverValue = 0;
-                    Object.entries(maintenance || {}).forEach(([resource, cost]) => {
-                        if (cost > 0) {
-                            maintenanceResources[resource] = cost;
-                            if (resource === 'silver') {
-                                totalMaintenanceSilverValue += cost;
-                            } else {
-                                const price = result.market?.prices?.[resource] || 1;
-                                const silverValue = cost * price;
-                                totalMaintenanceSilverValue += silverValue;
-                            }
-                        }
-                    });
-
-                    if (Object.keys(maintenanceResources).length > 0) {
-                        console.group('  军队维护（本地计算 - 仅供参考）');
-                        Object.entries(maintenanceResources).forEach(([resource, cost]) => {
-                            if (resource === 'silver') {
-                                console.log(`    ${resource}: ${cost.toFixed(2)}`);
-                            } else {
-                                const price = result.market?.prices?.[resource] || 1;
-                                const silverValue = cost * price;
-                                console.log(`    ${resource}: ${cost.toFixed(2)} (价值 ${silverValue.toFixed(2)} 银币)`);
-                            }
-                        });
-                        console.log(`    💰 总价值: ${totalMaintenanceSilverValue.toFixed(2)} 银币`);
-                        console.groupEnd();
-                    }
                 }
 
                 if (breakdown.subsidy) console.log('  税收补贴:', breakdown.subsidy.toFixed(2));
@@ -3403,7 +3344,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
                                     const lossText = losses.length > 0 ? `（${losses.join('，')}）` : '';
                                     return `🔥 遭到 ${raidData.nationName} 的${actionName}！${lossText}`;
                                 }
-                            } catch (e) {
+                            } catch {
                                 return `⚔️ 发生了一场敌方军事行动！`;
                             }
                         }
@@ -3414,7 +3355,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
                                 const jsonStr = log.replace('WAR_DECLARATION_EVENT:', '');
                                 const warData = JSON.parse(jsonStr);
                                 return `⚔️ ${warData.nationName} 对你宣战！`;
-                            } catch (e) {
+                            } catch {
                                 return `⚔️ 有国家对你宣战！`;
                             }
                         }
@@ -3704,7 +3645,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
                             if (log.includes('请求和平')) {
                                 debugLog('event', '[EVENT DEBUG] Peace request detected in log:', log);
                                 // Support both regular numbers and scientific notation (e.g., 1.23e+25)
-                                const match = log.match(/🤝 (.+) 请求和平，愿意支付 ([\d.e+\-]+) 银币作为赔款/);
+                                const match = log.match(/🤝 (.+) 请求和平，愿意支付 ([\d.e+-]+) 银币作为赔款/);
                                 debugLog('event', '[EVENT DEBUG] Regex match result:', match);
                                 if (match) {
                                     const nationName = match[1];
@@ -4976,7 +4917,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
                                 if (replenishItems.length > 0) {
                                     baseQueue = [...baseQueue, ...replenishItems];
                                     const summary = Object.entries(replenishCounts)
-                                        .filter(([_, count]) => count > 0)
+                                        .filter(([, count]) => count > 0)
                                         .map(([unitId, count]) => `${UNIT_TYPES[unitId]?.name || unitId} ×${count}`)
                                         .join('、');
                                     addLog(`🔄 自动补兵：已花费资金招募 ${summary} 加入训练队列。`);
@@ -5018,15 +4959,11 @@ export const useGameLoop = (gameState, addLog, actions) => {
 
                     // 计算有多少岗位可以用于新训练（避免多次 filter 带来的 O(n) 扫描）
                     // [FIX] 必须考虑不同兵种的populationCost，否则会导致超员
-                    let waitingCount = 0;
-                    let trainingCount = 0;
                     let trainingPopulation = 0; // [FIX] 训练中单位的实际人口消耗
                     for (let i = 0; i < baseQueue.length; i++) {
                         const item = baseQueue[i];
                         const s = item?.status;
-                        if (s === 'waiting') waitingCount++;
-                        else if (s === 'training') {
-                            trainingCount++;
+                        if (s === 'training') {
                             // [FIX] 累加训练中单位的人口消耗
                             const popCost = UNIT_TYPES[item?.unitId]?.populationCost || 1;
                             trainingPopulation += popCost;

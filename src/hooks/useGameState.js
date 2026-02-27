@@ -131,7 +131,7 @@ const calculateSaveSize = (data) => {
             mb: sizeInMB,
             display: sizeInBytes > 1024 * 1024 ? `${sizeInMB}MB` : `${sizeInKB}KB`
         };
-    } catch (e) {
+    } catch {
         return { bytes: 0, kb: '0', mb: '0', display: '0KB' };
     }
 };
@@ -190,7 +190,7 @@ export const getAllSaveSlots = () => {
                     difficultyName: diffConfig?.name || '普通',
                     difficultyIcon: diffConfig?.icon || '⚖️',
                 });
-            } catch (e) {
+            } catch {
                 slots.push({ slotIndex: i, isEmpty: true, name: `存档 ${i + 1}` });
             }
         } else {
@@ -218,7 +218,7 @@ export const getAllSaveSlots = () => {
                 difficultyName: diffConfig?.name || '普通',
                 difficultyIcon: diffConfig?.icon || '⚖️',
             });
-        } catch (e) {
+        } catch {
             // 自动存档损坏，忽略
         }
     }
@@ -256,7 +256,7 @@ export const deleteSaveSlot = (slotIndex) => {
             if (isExternalSaveStub(parsed)) {
                 void removeSaveFromIndexedDb(targetKey);
             }
-        } catch (parseError) {
+        } catch {
             // Ignore malformed save metadata
         }
 
@@ -271,10 +271,17 @@ export const deleteSaveSlot = (slotIndex) => {
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
 
+const getGlobalBuffer = () => (
+    typeof globalThis !== 'undefined' && typeof globalThis.Buffer !== 'undefined'
+        ? globalThis.Buffer
+        : null
+);
+
 const toBase64 = (arrayBuffer) => {
     if (typeof window === 'undefined') {
-        if (typeof Buffer !== 'undefined') {
-            return Buffer.from(arrayBuffer).toString('base64');
+        const globalBuffer = getGlobalBuffer();
+        if (globalBuffer) {
+            return globalBuffer.from(arrayBuffer).toString('base64');
         }
         throw new Error('Base64 编码不可用');
     }
@@ -289,8 +296,9 @@ const toBase64 = (arrayBuffer) => {
 
 const fromBase64 = (base64) => {
     if (typeof window === 'undefined') {
-        if (typeof Buffer !== 'undefined') {
-            return Uint8Array.from(Buffer.from(base64, 'base64'));
+        const globalBuffer = getGlobalBuffer();
+        if (globalBuffer) {
+            return Uint8Array.from(globalBuffer.from(base64, 'base64'));
         }
         throw new Error('Base64 解码不可用');
     }
@@ -360,7 +368,7 @@ const sanitizeExpansionSettings = (settings = {}) => {
     const cleaned = {};
     Object.entries(settings).forEach(([buildingId, config]) => {
         if (!config || typeof config !== 'object') return;
-        const { maxCount, ...rest } = config;
+        const { maxCount: _maxCount, ...rest } = config;
         cleaned[buildingId] = { ...rest };
     });
     return cleaned;
@@ -990,7 +998,6 @@ const buildInitialNations = (playerState = null) => {
         
         // 初始化库存：基于资源偏差，围绕目标库存500波动
         const inventory = {};
-        const targetInventory = 500;
         if (nation.economyTraits?.resourceBias) {
             Object.entries(nation.economyTraits.resourceBias).forEach(([resourceKey, bias]) => {
                 // 使用与 aiEconomy.js 一致的目标库存公式
@@ -2463,7 +2470,7 @@ export const useGameState = () => {
                         try {
                             const parsed = JSON.parse(data);
                             saveSlots.push({ key, timestamp: parsed.updatedAt || 0, size: data.length });
-                        } catch (e) {
+                        } catch {
                             // Invalid save, remove it
                             localStorage.removeItem(key);
                         }
@@ -2516,7 +2523,7 @@ export const useGameState = () => {
             try {
                 localStorage.setItem(targetKey, JSON.stringify(stub));
                 stubStored = true;
-            } catch (stubError) {
+            } catch {
                 const cleaned = cleanupOldSaves({ includeAutoSave: source !== 'auto' });
                 if (cleaned) {
                     try {
@@ -2804,7 +2811,7 @@ export const useGameState = () => {
                 if (isExternalSaveStub(parsed)) {
                     void removeSaveFromIndexedDb(targetKey);
                 }
-            } catch (parseError) {
+            } catch {
                 // Ignore malformed save metadata
             }
 
@@ -2953,10 +2960,6 @@ export const useGameState = () => {
             // 方案4（最终保底）：弹窗提示用户手动复制
             console.log('[Export] Falling back to prompt...');
             // 缩短存档数据用于显示（太长会导致弹窗问题）
-            const shortData = fileJson.length > 500
-                ? fileJson.substring(0, 500) + '...[数据已截断，请使用下方完整复制]'
-                : fileJson;
-
             // 创建一个隐藏的 textarea 用于复制
             const textarea = document.createElement('textarea');
             textarea.value = fileJson;
@@ -3062,7 +3065,7 @@ export const useGameState = () => {
             try {
                 localStorage.setItem(targetKey, JSON.stringify(stub));
                 return true;
-            } catch (error) {
+            } catch {
                 return false;
             }
         };
@@ -3152,7 +3155,7 @@ export const useGameState = () => {
                                 const minimalPayload = buildMinimalAutoSavePayload(normalized);
                                 await persistImportedSave(minimalPayload, targetKey);
                                 addLogEntry('⚠️ 存档空间严重不足，已使用最小导入（部分历史数据丢失）。');
-                            } catch (minimalError) {
+                            } catch {
                                 // Final fallback: clear old saves and retry
                                 console.warn('[Import] Minimal failed, clearing old saves...');
                                 try {
@@ -3160,7 +3163,7 @@ export const useGameState = () => {
                                     const minimalPayload = buildMinimalAutoSavePayload(normalized);
                                     await persistImportedSave(minimalPayload, targetKey);
                                     addLogEntry('⚠️ 已清理自动存档以腾出空间，导入成功。');
-                                } catch (finalError) {
+                                } catch {
                                     throw new Error('存储空间已满，无法导入存档。请在浏览器设置中清理网站数据或删除现有存档后重试。');
                                 }
                             }
@@ -3257,7 +3260,7 @@ export const useGameState = () => {
                                 const minimalPayload = buildMinimalAutoSavePayload(normalized);
                                 await persistImportedSave(minimalPayload, targetKey);
                                 addLogEntry('⚠️ 存档空间严重不足，已使用最小导入（部分历史数据丢失）。');
-                            } catch (minimalError) {
+                            } catch {
                                 // Final fallback: clear old saves and retry
                                 console.warn('[Import] Minimal failed, clearing old saves...');
                                 try {
@@ -3265,7 +3268,7 @@ export const useGameState = () => {
                                     const minimalPayload = buildMinimalAutoSavePayload(normalized);
                                     await persistImportedSave(minimalPayload, targetKey);
                                     addLogEntry('⚠️ 已清理自动存档以腾出空间，导入成功。');
-                                } catch (finalError) {
+                                } catch {
                                     throw new Error('存储空间已满，无法导入存档。请在浏览器设置中清理网站数据或删除现有存档后重试。');
                                 }
                             }
@@ -3676,7 +3679,7 @@ export const useGameState = () => {
         setForeignInvestments, // [FIX] Expose setter
         foreignInvestmentPolicy,
         setForeignInvestmentPolicy,
-        setOverseasBuildings, setOverseasBuildings,
+        setOverseasBuildings,
 
         // 策略行动
         actionCooldowns,
@@ -3758,9 +3761,6 @@ export const useGameState = () => {
         // 国家/帝国名称
         empireName,
         setEmpireName,
-        // 财政数据
-        fiscalActual,
-        setFiscalActual,
         dailyMilitaryExpense,
         setDailyMilitaryExpense,
     };

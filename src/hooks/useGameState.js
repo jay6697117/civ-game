@@ -2,13 +2,22 @@
 // 集中管理所有游戏状态，避免App.jsx中状态定义过多
 
 import { useEffect, useRef, useState } from 'react';
-import { COUNTRIES, DEFAULT_VASSAL_STATUS, RESOURCES, STRATA, THREE_KINGDOMS_FACTIONS } from '../config';
+import {
+    COUNTRIES,
+    DEFAULT_VASSAL_STATUS,
+    RESOURCES,
+    STRATA,
+    THREE_KINGDOMS_FACTIONS,
+    THREE_KINGDOMS_PROVINCES,
+    THREE_KINGDOMS_GENERALS,
+} from '../config';
 import { HISTORY_STORAGE_LIMIT, LOG_STORAGE_LIMIT } from '../config/gameConstants';
 import { isOldUpgradeFormat, migrateUpgradesToNewFormat } from '../utils/buildingUpgradeUtils';
 import { migrateAllOfficialsForInvestment } from '../logic/officials/migration';
 import { DEFAULT_DIFFICULTY, getDifficultyConfig, getStartingSilverMultiplier, getInitialBuildings } from '../config/difficulty';
 import { getScenarioById } from '../config/scenarios';
 import { assignRandomFactionByTier } from '../logic/three-kingdoms/assignment';
+import { buildInitialCampaignState } from '../logic/three-kingdoms/campaignState';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
@@ -1483,6 +1492,18 @@ export const useGameState = () => {
         }
         setAssignedFactionId(nextFactionId);
         localStorage.removeItem(NEW_GAME_ASSIGNED_FACTION_KEY);
+
+        const initialCampaignState = buildInitialCampaignState({
+            startYear: nextStartYear,
+            factions: THREE_KINGDOMS_FACTIONS,
+            provinces: THREE_KINGDOMS_PROVINCES,
+            generals: THREE_KINGDOMS_GENERALS,
+            assignedFactionId: nextFactionId,
+        });
+        setCampaignState(initialCampaignState);
+        setTurnQueue([]);
+        setSelectedProvinceId(null);
+        setSelectedLegionId(null);
 
         // 战役模式默认回到总览，等待地图/战役模块接管 UI
         setActiveTab('overview');

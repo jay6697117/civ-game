@@ -18,6 +18,7 @@ import { DEFAULT_DIFFICULTY, getDifficultyConfig, getStartingSilverMultiplier, g
 import { getScenarioById } from '../config/scenarios';
 import { assignRandomFactionByTier } from '../logic/three-kingdoms/assignment';
 import { buildInitialCampaignState } from '../logic/three-kingdoms/campaignState';
+import { issueTurnCommand, removeTurnCommand } from '../logic/three-kingdoms/commands';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
@@ -3360,23 +3361,21 @@ export const useGameState = () => {
 
     const queueTurnCommand = (command) => {
         if (!command || typeof command !== 'object') return null;
-        const enriched = {
-            ...command,
-            _id: command._id || `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        };
-        setTurnQueue(prev => [...prev, enriched]);
-        return enriched;
+        let inserted = null;
+        setTurnQueue(prev => {
+            const result = issueTurnCommand(prev, command);
+            if (!result.ok) {
+                inserted = null;
+                return prev;
+            }
+            inserted = result.command;
+            return result.queue;
+        });
+        return inserted;
     };
 
     const cancelTurnCommand = (commandRef) => {
-        setTurnQueue(prev => {
-            if (typeof commandRef === 'number') {
-                return prev.filter((_, index) => index !== commandRef);
-            }
-            const targetId = typeof commandRef === 'string' ? commandRef : commandRef?._id;
-            if (!targetId) return prev;
-            return prev.filter(entry => entry?._id !== targetId);
-        });
+        setTurnQueue(prev => removeTurnCommand(prev, commandRef));
     };
 
     const commitTurn = () => {

@@ -19,7 +19,7 @@ import { getScenarioById } from '../config/scenarios';
 import { assignRandomFactionByTier } from '../logic/three-kingdoms/assignment';
 import { buildInitialCampaignState } from '../logic/three-kingdoms/campaignState';
 import { issueTurnCommand, removeTurnCommand } from '../logic/three-kingdoms/commands';
-import { assertCampaignSaveCompatibility } from '../logic/three-kingdoms/saveSchema';
+import { assertCampaignSaveCompatibility, migrateCampaignSaveToV3 } from '../logic/three-kingdoms/saveSchema';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
@@ -27,7 +27,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 const SAVE_SLOT_COUNT = 10; // 手动存档槽位数量
 const SAVE_SLOT_PREFIX = 'civ_game_save_slot_';
 const AUTOSAVE_KEY = 'civ_game_autosave_v1';
-const SAVE_FORMAT_VERSION = 2;
+const SAVE_FORMAT_VERSION = 3;
 const SAVE_FILE_EXTENSION = 'cgsave';
 const SAVE_OBFUSCATION_KEY = 'civ_game_simple_mask_v1';
 // Lower soft limit to prefer IndexedDB earlier (localStorage quota issues)
@@ -45,6 +45,12 @@ const NEW_GAME_MODE_KEY = 'new_game_mode';
 const NEW_GAME_ASSIGNED_FACTION_KEY = 'new_game_assigned_faction';
 const NEW_GAME_CAMPAIGN_START_YEAR_KEY = 'new_game_campaign_start_year';
 const NEW_GAME_FORCED_RANDOM_FACTION_KEY = 'new_game_forced_random_faction';
+const MAX_CAMPAIGN_NOTIFICATIONS = 30;
+
+const buildInitialCampaignUi = () => ({
+    activePanel: 'commands',
+    showNeighborHighlight: true,
+});
 
 const hasIndexedDb = () => typeof indexedDB !== 'undefined';
 
@@ -1126,6 +1132,8 @@ export const useGameState = () => {
     const [turnQueue, setTurnQueue] = useState([]);
     const [selectedProvinceId, setSelectedProvinceId] = useState(null);
     const [selectedLegionId, setSelectedLegionId] = useState(null);
+    const [campaignUi, setCampaignUi] = useState(buildInitialCampaignUi);
+    const [campaignNotifications, setCampaignNotifications] = useState([]);
     const [eventConfirmationEnabled, setEventConfirmationEnabled] = useState(false); // 事件二次确认开关
     const savingIndicatorTimer = useRef(null);
     const autoSaveQuotaNotifiedRef = useRef(false);
@@ -1506,6 +1514,8 @@ export const useGameState = () => {
         setTurnQueue([]);
         setSelectedProvinceId(null);
         setSelectedLegionId(null);
+        setCampaignUi(buildInitialCampaignUi());
+        setCampaignNotifications([]);
 
         // 战役模式默认回到总览，等待地图/战役模块接管 UI
         setActiveTab('overview');
@@ -1922,6 +1932,8 @@ export const useGameState = () => {
                 turnQueue,
                 selectedProvinceId,
                 selectedLegionId,
+                campaignUi,
+                campaignNotifications,
                 eventConfirmationEnabled,
                 updatedAt: timestamp,
                 saveSource: source,
@@ -1941,6 +1953,7 @@ export const useGameState = () => {
             throw new Error('存档数据无效');
         }
         assertCampaignSaveCompatibility(data);
+        data = migrateCampaignSaveToV3(data);
         setResources(data.resources || INITIAL_RESOURCES, { reason: 'load_game', audit: false });
 
         // [FIX] 存档人口同步修复：防止population和popStructure不一致导致的恶性扣减循环
@@ -2394,6 +2407,11 @@ export const useGameState = () => {
         setTurnQueue(Array.isArray(data.turnQueue) ? data.turnQueue : []);
         setSelectedProvinceId(data.selectedProvinceId || null);
         setSelectedLegionId(data.selectedLegionId || null);
+        setCampaignUi({
+            ...buildInitialCampaignUi(),
+            ...(data.campaignUi || {}),
+        });
+        setCampaignNotifications(Array.isArray(data.campaignNotifications) ? data.campaignNotifications : []);
         setEventEffectSettings({
             ...DEFAULT_EVENT_EFFECT_SETTINGS,
             ...(data.eventEffectSettings || {}),
@@ -3365,12 +3383,35 @@ export const useGameState = () => {
         if (!command || typeof command !== 'object') return null;
         let inserted = null;
         setTurnQueue(prev => {
-            const result = issueTurnCommand(prev, command);
+            const result = issueTurnCommand(prev, command, {
+                assignedFactionId,
+                campaignState,
+            });
             if (!result.ok) {
                 inserted = null;
+                if (result.error) {
+                    setCampaignNotifications((prevNotifications) => ([
+                        ...prevNotifications,
+                        {
+                            id: `notify_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                            type: 'error',
+                            code: result.code || 'QUEUE_FAILED',
+                            message: result.error,
+                        },
+                    ].slice(-MAX_CAMPAIGN_NOTIFICATIONS)));
+                }
                 return prev;
             }
             inserted = result.command;
+            setCampaignNotifications((prevNotifications) => ([
+                ...prevNotifications,
+                {
+                    id: `notify_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    type: 'info',
+                    code: 'QUEUE_ADDED',
+                    message: `已加入命令队列：${result.command.type}`,
+                },
+            ].slice(-MAX_CAMPAIGN_NOTIFICATIONS)));
             return result.queue;
         });
         return inserted;
@@ -3382,6 +3423,14 @@ export const useGameState = () => {
 
     const commitTurn = () => {
         setTurnQueue([]);
+    };
+
+    const removeQueuedCommandById = (commandId) => {
+        setTurnQueue((prev) => removeTurnCommand(prev, commandId));
+    };
+
+    const clearCampaignNotifications = () => {
+        setCampaignNotifications([]);
     };
 
     const rerollAssignedFaction = (allowedTiers = ['A', 'B', 'C']) => {
@@ -3460,6 +3509,10 @@ export const useGameState = () => {
         setSelectedProvinceId,
         selectedLegionId,
         setSelectedLegionId,
+        campaignUi,
+        setCampaignUi,
+        campaignNotifications,
+        setCampaignNotifications,
 
         // 政令与外交
         nations,
@@ -3697,6 +3750,8 @@ export const useGameState = () => {
         queueTurnCommand,
         cancelTurnCommand,
         commitTurn,
+        removeQueuedCommandById,
+        clearCampaignNotifications,
         rerollAssignedFaction,
         eventConfirmationEnabled,
         setEventConfirmationEnabled,

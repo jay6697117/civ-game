@@ -91,8 +91,10 @@ import {
 import { resolveTurn } from '../logic/three-kingdoms/resolveTurn';
 import { buildVictoryCheckInput, checkVictory } from '../logic/three-kingdoms/victory';
 import { resolveHistoricalEvents190 } from '../config/three-kingdoms/events190';
+import { buildAiTurnCommands } from '../logic/three-kingdoms/aiTurn';
 
 export const TURN_INTERVAL_DAYS = 10;
+const CAMPAIGN_NOTIFICATION_LIMIT = 30;
 export const shouldResolveCampaignTurn = ({ gameMode, daysElapsed }) => (
     gameMode === 'three_kingdoms'
     && Number.isFinite(daysElapsed)
@@ -479,6 +481,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
         assignedFactionId,
         campaignState,
         setCampaignState,
+        setCampaignNotifications,
         turnQueue,
         setTurnQueue,
         commitTurn,
@@ -965,13 +968,59 @@ export const useGameLoop = (gameState, addLog, actions) => {
             // 三国战役回合：在日 Tick 上叠加 10 天一回合的战略结算
             const currentDay = current.daysElapsed || 0;
             if (shouldResolveCampaignTurn({ gameMode: current.gameMode, daysElapsed: currentDay }) && current.campaignState) {
+                const aiCommandQueue = [];
+                const aiFactionIds = Object.keys(current.campaignState?.factions || {}).filter(
+                    (factionId) => factionId !== current.assignedFactionId,
+                );
+                aiFactionIds.forEach((factionId, index) => {
+                    const aiCommands = buildAiTurnCommands(
+                        current.campaignState,
+                        factionId,
+                        currentDay + index + 1,
+                    );
+                    if (Array.isArray(aiCommands) && aiCommands.length > 0) {
+                        aiCommandQueue.push(...aiCommands);
+                    }
+                });
+
                 const turnResult = resolveTurn(
                     { campaignState: current.campaignState },
-                    current.turnQueue || [],
+                    [...(current.turnQueue || []), ...aiCommandQueue],
                     currentDay,
                 );
 
                 let nextCampaignState = turnResult?.nextCampaignState || null;
+                const turnNotifications = [];
+
+                if (Array.isArray(turnResult?.aiReports) && turnResult.aiReports.length > 0) {
+                    const failedAiCount = turnResult.aiReports.filter((report) => report.status === 'FAILED').length;
+                    turnNotifications.push({
+                        id: `notify_ai_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        type: failedAiCount > 0 ? 'warning' : 'info',
+                        message: `AI 本回合执行 ${turnResult.aiReports.length} 条命令${failedAiCount > 0 ? `（失败 ${failedAiCount} 条）` : ''}`,
+                    });
+                }
+
+                if (Array.isArray(turnResult?.battleReports) && turnResult.battleReports.length > 0) {
+                    turnNotifications.push({
+                        id: `notify_battle_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        type: 'info',
+                        message: `本回合发生 ${turnResult.battleReports.length} 场战斗`,
+                    });
+                }
+
+                if (Array.isArray(turnResult?.recruitReports)) {
+                    turnResult.recruitReports
+                        .filter((report) => report.status === 'FAILED')
+                        .forEach((report) => {
+                            turnNotifications.push({
+                                id: `notify_recruit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                                type: 'error',
+                                message: `招募失败：${report.code || 'UNKNOWN'}`,
+                            });
+                        });
+                }
+
                 if (nextCampaignState) {
                     const victoryInput = buildVictoryCheckInput({
                         campaignState: nextCampaignState,
@@ -995,6 +1044,11 @@ export const useGameLoop = (gameState, addLog, actions) => {
                         eventResult.events.forEach((eventItem) => {
                             if (eventItem?.title) {
                                 addLog(`📜 ${eventItem.title}：${eventItem.summary || ''}`);
+                                turnNotifications.push({
+                                    id: `notify_event_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                                    type: 'info',
+                                    message: `事件：${eventItem.title}`,
+                                });
                             }
                         });
                     }
@@ -1010,11 +1064,23 @@ export const useGameLoop = (gameState, addLog, actions) => {
                             },
                         };
                         addLog(`🏆 战役胜利：${victoryResult.title}`);
+                        turnNotifications.push({
+                            id: `notify_victory_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                            type: 'success',
+                            message: `战役胜利：${victoryResult.title}`,
+                        });
                         setIsPaused(true);
                     }
 
                     setCampaignState(nextCampaignState);
                     stateRef.current.campaignState = nextCampaignState;
+                }
+
+                if (turnNotifications.length > 0 && typeof setCampaignNotifications === 'function') {
+                    setCampaignNotifications((prev) => ([
+                        ...(Array.isArray(prev) ? prev : []),
+                        ...turnNotifications,
+                    ].slice(-CAMPAIGN_NOTIFICATION_LIMIT)));
                 }
 
                 if (Array.isArray(turnResult?.logs) && turnResult.logs.length > 0) {

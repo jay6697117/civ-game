@@ -58,6 +58,7 @@ import { AchievementToast } from './components/common/AchievementToast';
 import { DonateModal } from './components/modals/DonateModal';
 import { StrategyMapStage } from './components/strategy-map/StrategyMapStage';
 import { CampaignSidePanel } from './components/strategy-map/CampaignSidePanel';
+import { CampaignCommandQueuePanel } from './components/strategy-map/CampaignCommandQueuePanel';
 import { executeStrategicAction, STRATEGIC_ACTIONS } from './logic/strategicActions';
 import { getOrganizationStage, getPhaseFromStage } from './logic/organizationSystem';
 import { createPromiseTask, PROMISE_CONFIG } from './logic/promiseTasks';
@@ -1202,17 +1203,60 @@ function GameApp({ gameState }) {
                     {/* 中间内容区 - 主操作面板 */}
                     <section className="md:col-span-1 lg:col-span-8 space-y-3 sm:space-y-4 order-1 md:order-2 lg:order-2">
                         {gameState.gameMode === 'three_kingdoms' && gameState.campaignState && (
-                            <div className="grid grid-cols-1 xl:grid-cols-[3fr_1.2fr] gap-3">
-                                <StrategyMapStage
-                                    campaignState={gameState.campaignState}
-                                    selectedProvinceId={gameState.selectedProvinceId}
-                                    onSelectProvince={gameState.setSelectedProvinceId}
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-1 xl:grid-cols-[3fr_1.2fr] gap-3">
+                                    <StrategyMapStage
+                                        campaignState={gameState.campaignState}
+                                        selectedProvinceId={gameState.selectedProvinceId}
+                                        selectedLegionId={gameState.selectedLegionId}
+                                        assignedFactionId={gameState.assignedFactionId}
+                                        onSelectProvince={gameState.setSelectedProvinceId}
+                                    />
+                                    <CampaignSidePanel
+                                        campaignState={gameState.campaignState}
+                                        selectedProvinceId={gameState.selectedProvinceId}
+                                        assignedFactionId={gameState.assignedFactionId}
+                                        selectedLegionId={gameState.selectedLegionId}
+                                        onSelectLegion={gameState.setSelectedLegionId}
+                                        onQueueCommand={gameState.queueTurnCommand}
+                                        onNotify={(notification) => {
+                                            if (!notification) return;
+                                            gameState.setCampaignNotifications((prev) => ([
+                                                ...(Array.isArray(prev) ? prev : []),
+                                                notification,
+                                            ].slice(-30)));
+                                        }}
+                                    />
+                                </div>
+
+                                <CampaignCommandQueuePanel
+                                    daysElapsed={gameState.daysElapsed}
+                                    intervalDays={10}
+                                    turnQueue={gameState.turnQueue}
+                                    onRemoveCommand={gameState.removeQueuedCommandById}
                                 />
-                                <CampaignSidePanel
-                                    campaignState={gameState.campaignState}
-                                    selectedProvinceId={gameState.selectedProvinceId}
-                                    assignedFactionId={gameState.assignedFactionId}
-                                />
+
+                                {Array.isArray(gameState.campaignNotifications) && gameState.campaignNotifications.length > 0 && (
+                                    <div className="rounded-xl border border-gray-700/50 bg-black/30 p-2.5 space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-semibold text-gray-200">战役通知</h4>
+                                            <button
+                                                type="button"
+                                                className="text-[11px] text-gray-400 hover:text-gray-200"
+                                                onClick={gameState.clearCampaignNotifications}
+                                            >
+                                                清空
+                                            </button>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {gameState.campaignNotifications.slice(-6).map((item) => (
+                                                <div key={item.id} className="text-[11px] text-gray-300">
+                                                    • {item.message}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 

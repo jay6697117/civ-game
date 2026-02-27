@@ -1,12 +1,3 @@
-const toMapById = (list = []) => {
-    const map = {};
-    list.forEach((item) => {
-        if (!item?.id) return;
-        map[item.id] = { ...item };
-    });
-    return map;
-};
-
 const buildFactionState = (factions = [], assignedFactionId = null) => {
     const factionMap = {};
     factions.forEach((faction) => {
@@ -64,12 +55,67 @@ const buildProvinceState = (provinces = [], factions = []) => {
             publicOrder: 70,
             grainOutput: province.grainOutput ?? 120,
             taxOutput: province.taxOutput ?? 90,
-            garrison: [],
+            garrison: [{
+                id: `garrison_${province.id}_0`,
+                factionId: ownerFactionId,
+                troops: 140,
+                supply: 70,
+                morale: 65,
+                stance: 'DEFEND',
+            }],
         };
     });
 
     return provinceMap;
 };
+
+const findSpawnProvinceId = (faction, provinceState) => {
+    const allProvinces = Object.values(provinceState || {});
+    const owned = allProvinces.find((province) => province.ownerFactionId === faction.id);
+    if (owned) return owned.id;
+    if (faction.capitalProvinceId && provinceState[faction.capitalProvinceId]) {
+        return faction.capitalProvinceId;
+    }
+    return allProvinces[0]?.id || null;
+};
+
+const buildInitialLegionState = (factions = [], factionState = {}, provinceState = {}) => {
+    const legionMap = {};
+    factions.forEach((faction, index) => {
+        const targetFaction = factionState[faction.id];
+        if (!targetFaction) return;
+        const spawnProvinceId = findSpawnProvinceId(faction, provinceState);
+        if (!spawnProvinceId) return;
+        const legionId = `legion_${faction.id}_1`;
+        const generalId = targetFaction.generals?.[0] || null;
+        legionMap[legionId] = {
+            id: legionId,
+            factionId: faction.id,
+            generalId,
+            currentProvinceId: spawnProvinceId,
+            troops: 220 + ((index % 4) * 15),
+            supply: 82,
+            mobility: 1,
+            morale: 72,
+            stance: 'BALANCED',
+        };
+        targetFaction.legions = [...(targetFaction.legions || []), legionId];
+    });
+    return legionMap;
+};
+
+const buildDefaultTurnReport = () => ({
+    turn: 0,
+    resolvedAtDay: 0,
+    phaseOrder: [],
+    battleReports: [],
+    recruitReports: [],
+    fortifyReports: [],
+    supplyReports: [],
+    diplomacyChanges: [],
+    aiReports: [],
+    logs: [],
+});
 
 export function buildInitialCampaignState({
     startYear = 190,
@@ -81,6 +127,7 @@ export function buildInitialCampaignState({
     const factionState = buildFactionState(factions, assignedFactionId);
     const generalState = buildGeneralState(generals, factionState);
     const provinceState = buildProvinceState(provinces, factions);
+    const legionState = buildInitialLegionState(factions, factionState, provinceState);
 
     return {
         startYear,
@@ -91,11 +138,25 @@ export function buildInitialCampaignState({
         factions: factionState,
         provinces: provinceState,
         generals: generalState,
-        legions: {},
+        legions: legionState,
         eventFlags: {},
         victoryProgress: {
             controlledProvinces: 0,
+            requiredProvinceCount: 10,
+            requiredKeyProvinces: ['sili', 'jingzhou'],
             targetYear: 220,
+        },
+        turnMeta: {
+            intervalDays: 10,
+            lastResolvedDay: 0,
+            lastResolvedTurn: 0,
+            playerCommandCount: 0,
+            aiCommandCount: 0,
+        },
+        lastTurnReport: buildDefaultTurnReport(),
+        aiState: {
+            lastResolvedTurn: 0,
+            lastIssuedCommands: [],
         },
     };
 }

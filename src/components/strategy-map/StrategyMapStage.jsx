@@ -1,12 +1,33 @@
 import React from 'react';
 import { ProvinceNode } from './ProvinceNode';
 
+const countLegionsByProvince = (legions = []) => {
+    const map = {};
+    legions.forEach((legion) => {
+        const provinceId = legion?.currentProvinceId;
+        if (!provinceId) return;
+        map[provinceId] = (map[provinceId] || 0) + 1;
+    });
+    return map;
+};
+
 export const StrategyMapStage = ({
     campaignState,
     selectedProvinceId,
+    selectedLegionId,
+    assignedFactionId,
     onSelectProvince,
 }) => {
     const provinces = Object.values(campaignState?.provinces || {});
+    const allLegions = Object.values(campaignState?.legions || {});
+    const friendlyLegions = allLegions.filter((legion) => legion.factionId === assignedFactionId);
+    const enemyLegions = allLegions.filter((legion) => legion.factionId !== assignedFactionId);
+    const friendlyCountMap = countLegionsByProvince(friendlyLegions);
+    const enemyCountMap = countLegionsByProvince(enemyLegions);
+
+    const selectedLegion = selectedLegionId ? campaignState?.legions?.[selectedLegionId] : null;
+    const selectedLegionProvince = selectedLegion ? campaignState?.provinces?.[selectedLegion.currentProvinceId] : null;
+    const neighborSet = new Set(selectedLegionProvince?.neighbors || []);
 
     return (
         <section className="rounded-xl border border-red-500/30 bg-black/50 p-3">
@@ -23,6 +44,9 @@ export const StrategyMapStage = ({
                             province={province}
                             ownerFaction={ownerFaction}
                             isSelected={selectedProvinceId === province.id}
+                            isNeighborHighlighted={neighborSet.has(province.id)}
+                            friendlyLegionCount={friendlyCountMap[province.id] || 0}
+                            enemyLegionCount={enemyCountMap[province.id] || 0}
                             onSelect={onSelectProvince}
                         />
                     );

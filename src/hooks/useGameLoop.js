@@ -89,6 +89,8 @@ import {
     ECONOMIC_INDICATOR_CONFIG,
 } from '../logic/economy/economicIndicators';
 import { resolveTurn } from '../logic/three-kingdoms/resolveTurn';
+import { buildVictoryCheckInput, checkVictory } from '../logic/three-kingdoms/victory';
+import { resolveHistoricalEvents190 } from '../config/three-kingdoms/events190';
 
 export const TURN_INTERVAL_DAYS = 10;
 export const shouldResolveCampaignTurn = ({ gameMode, daysElapsed }) => (
@@ -474,6 +476,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
         isPaused,
         setIsPaused,
         gameMode,
+        assignedFactionId,
         campaignState,
         setCampaignState,
         turnQueue,
@@ -622,6 +625,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
         decrees,
         gameSpeed,
         gameMode,
+        assignedFactionId,
         campaignState,
         turnQueue,
         commitTurn,
@@ -754,6 +758,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
             decrees,
             gameSpeed,
             gameMode,
+            assignedFactionId,
             campaignState,
             turnQueue,
             commitTurn,
@@ -813,7 +818,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
             foreignInvestments, // [NEW] 海外投资
             diplomaticReputation, // [FIX] 外交声誉
         };
-    }, [resources, market, buildings, buildingUpgrades, population, popStructure, maxPopBonus, epoch, techsUnlocked, decrees, gameSpeed, gameMode, campaignState, turnQueue, commitTurn, nations, livingStandardStreaks, migrationCooldowns, taxShock, army, militaryQueue, jobFill, jobsAvailable, activeBuffs, activeDebuffs, taxPolicies, classWealthHistory, classNeedsHistory, militaryWageRatio, classApproval, daysElapsed, activeFestivalEffects, lastFestivalYear, isPaused, autoSaveInterval, isAutoSaveEnabled, lastAutoSaveTime, merchantState, tradeRoutes, diplomacyOrganizations, vassalDiplomacyQueue, vassalDiplomacyHistory, tradeStats, actions, actionCooldowns, actionUsage, promiseTasks, activeEventEffects, eventEffectSettings, rebellionStates, classInfluence, totalInfluence, birthAccumulator, stability, rulingCoalition, legitimacy, difficulty, officials, officialsSimCursor, activeDecrees, expansionSettings, quotaTargets, officialCapacity, ministerAssignments, ministerAutoExpansion, lastMinisterExpansionDay, priceControls, foreignInvestments, diplomaticReputation]);
+    }, [resources, market, buildings, buildingUpgrades, population, popStructure, maxPopBonus, epoch, techsUnlocked, decrees, gameSpeed, gameMode, assignedFactionId, campaignState, turnQueue, commitTurn, nations, livingStandardStreaks, migrationCooldowns, taxShock, army, militaryQueue, jobFill, jobsAvailable, activeBuffs, activeDebuffs, taxPolicies, classWealthHistory, classNeedsHistory, militaryWageRatio, classApproval, daysElapsed, activeFestivalEffects, lastFestivalYear, isPaused, autoSaveInterval, isAutoSaveEnabled, lastAutoSaveTime, merchantState, tradeRoutes, diplomacyOrganizations, vassalDiplomacyQueue, vassalDiplomacyHistory, tradeStats, actions, actionCooldowns, actionUsage, promiseTasks, activeEventEffects, eventEffectSettings, rebellionStates, classInfluence, totalInfluence, birthAccumulator, stability, rulingCoalition, legitimacy, difficulty, officials, officialsSimCursor, activeDecrees, expansionSettings, quotaTargets, officialCapacity, ministerAssignments, ministerAutoExpansion, lastMinisterExpansionDay, priceControls, foreignInvestments, diplomaticReputation]);
     // Note: classWealth is intentionally excluded from dependencies to prevent infinite loop
     // when setClassWealth is called inside Promise chains within this effect.
     // The latest classWealth value is available via stateRef.current.classWealth
@@ -966,9 +971,50 @@ export const useGameLoop = (gameState, addLog, actions) => {
                     currentDay,
                 );
 
-                if (turnResult?.nextCampaignState) {
-                    setCampaignState(turnResult.nextCampaignState);
-                    stateRef.current.campaignState = turnResult.nextCampaignState;
+                let nextCampaignState = turnResult?.nextCampaignState || null;
+                if (nextCampaignState) {
+                    const victoryInput = buildVictoryCheckInput({
+                        campaignState: nextCampaignState,
+                        assignedFactionId: current.assignedFactionId,
+                    });
+                    const eventResult = resolveHistoricalEvents190({
+                        currentYear: victoryInput.currentYear,
+                        eventFlags: nextCampaignState.eventFlags || {},
+                        factionId: current.assignedFactionId || nextCampaignState.assignedFactionId,
+                        currentTurn: nextCampaignState.currentTurn,
+                    });
+
+                    if (eventResult?.nextEventFlags) {
+                        nextCampaignState = {
+                            ...nextCampaignState,
+                            eventFlags: eventResult.nextEventFlags,
+                        };
+                    }
+
+                    if (Array.isArray(eventResult?.events) && eventResult.events.length > 0) {
+                        eventResult.events.forEach((eventItem) => {
+                            if (eventItem?.title) {
+                                addLog(`📜 ${eventItem.title}：${eventItem.summary || ''}`);
+                            }
+                        });
+                    }
+
+                    const victoryResult = checkVictory(victoryInput);
+                    if (victoryResult.achieved && !nextCampaignState.victoryResult) {
+                        nextCampaignState = {
+                            ...nextCampaignState,
+                            victoryResult: {
+                                ...victoryResult,
+                                achievedTurn: nextCampaignState.currentTurn,
+                                achievedYear: victoryInput.currentYear,
+                            },
+                        };
+                        addLog(`🏆 战役胜利：${victoryResult.title}`);
+                        setIsPaused(true);
+                    }
+
+                    setCampaignState(nextCampaignState);
+                    stateRef.current.campaignState = nextCampaignState;
                 }
 
                 if (Array.isArray(turnResult?.logs) && turnResult.logs.length > 0) {

@@ -16,6 +16,11 @@ import {
     isDiplomacyUnlocked,
 } from '../../config';
 import { calculateNegotiationAcceptChance } from '../../logic/diplomacy/negotiation';
+import {
+    CAMPAIGN_DIPLOMACY_ACTIONS,
+    getCampaignDiplomacyTargets,
+    queueCampaignDiplomacyAction,
+} from '../../logic/three-kingdoms/diplomacyAdapter';
 
 // Constants
 const NEGOTIATION_MAX_ROUNDS = 3;
@@ -126,6 +131,95 @@ const DiplomacyTabComponent = ({
             ...relationInfo(relationValue, isAllied),
         };
     };
+
+    const isCampaignMode = gameState?.gameMode === 'three_kingdoms' && !!gameState?.campaignState;
+    const campaignStateData = gameState?.campaignState || null;
+    const campaignAssignedFactionId = gameState?.assignedFactionId || null;
+    const campaignDiplomacyTargets = useMemo(() => {
+        if (!isCampaignMode) return [];
+        return getCampaignDiplomacyTargets({
+            campaignState: campaignStateData,
+            assignedFactionId: campaignAssignedFactionId,
+        });
+    }, [isCampaignMode, campaignStateData, campaignAssignedFactionId]);
+
+    const handleCampaignDiplomacyAction = (targetFactionId, action) => {
+        const queued = queueCampaignDiplomacyAction({
+            queueTurnCommand: gameState?.queueTurnCommand,
+            assignedFactionId: gameState?.assignedFactionId,
+            targetFactionId,
+            action,
+        });
+
+        if (!queued) {
+            setNegotiationFeedback({ type: 'error', message: '外交指令加入队列失败。' });
+            return;
+        }
+
+        const actionLabel = CAMPAIGN_DIPLOMACY_ACTIONS.find((item) => item.id === action)?.label || action;
+        setNegotiationFeedback({
+            type: 'info',
+            message: `已加入回合队列：${actionLabel}`,
+        });
+    };
+
+    if (isCampaignMode) {
+        return (
+            <div className="space-y-3">
+                <div className="rounded-lg border border-amber-500/35 bg-amber-950/20 p-3">
+                    <h3 className="text-sm font-semibold text-amber-200">战役外交命令台</h3>
+                    <p className="text-xs text-gray-300 mt-1">当前操作会写入回合命令队列，在 10 天战略回合时统一结算。</p>
+                </div>
+
+                {campaignDiplomacyTargets.length === 0 && (
+                    <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-3 text-xs text-gray-400">
+                        暂无可用外交目标。
+                    </div>
+                )}
+
+                <div className="space-y-2.5">
+                    {campaignDiplomacyTargets.map((target) => (
+                        <div
+                            key={target.id}
+                            className="rounded-lg border border-gray-700 bg-gray-900/50 p-3"
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <div>
+                                    <div className="text-sm font-semibold text-gray-100">{target.name}</div>
+                                    <div className="text-[11px] text-gray-400 mt-0.5">
+                                        关系值：{target.relation} · 档位：{target.tier}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {CAMPAIGN_DIPLOMACY_ACTIONS.map((actionItem) => (
+                                        <button
+                                            key={`${target.id}-${actionItem.id}`}
+                                            type="button"
+                                            onClick={() => handleCampaignDiplomacyAction(target.id, actionItem.id)}
+                                            className="rounded-md border border-amber-500/35 bg-amber-600/10 px-2 py-1 text-[11px] text-amber-100 hover:bg-amber-500/20 transition-colors"
+                                        >
+                                            {actionItem.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {negotiationFeedback?.message && (
+                    <div className={`rounded-md border px-3 py-2 text-xs ${
+                        negotiationFeedback.type === 'error'
+                            ? 'border-red-500/35 bg-red-950/20 text-red-200'
+                            : 'border-emerald-500/35 bg-emerald-950/20 text-emerald-200'
+                    }`}
+                    >
+                        {negotiationFeedback.message}
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     // --- Helpers & Logic ---
 

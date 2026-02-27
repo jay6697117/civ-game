@@ -1,8 +1,44 @@
 import { resolveProvinceBattle } from './battle';
 
 const PHASE_ORDER = ['SUPPLY', 'MOVEMENT', 'BATTLE', 'OCCUPATION', 'DIPLOMACY', 'EVENTS'];
+const TURN_INTERVAL_DAYS = 10;
+const SUPPLY_CONSUMPTION_PER_TURN = 18;
+const LOW_SUPPLY_THRESHOLD = 25;
+const LOW_SUPPLY_ATTRITION_RATIO = 0.12;
 
 const clone = (data) => JSON.parse(JSON.stringify(data || {}));
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const applySupplyPhase = (nextCampaignState, logs) => {
+    const supplyReports = [];
+    const legions = Object.values(nextCampaignState?.legions || {});
+
+    legions.forEach((legion) => {
+        const beforeSupply = Number(legion?.supply || 0);
+        const beforeTroops = Number(legion?.troops || 0);
+        if (!legion?.id || beforeTroops <= 0) return;
+
+        legion.supply = Math.max(0, beforeSupply - SUPPLY_CONSUMPTION_PER_TURN);
+
+        let attritionLoss = 0;
+        if (legion.supply < LOW_SUPPLY_THRESHOLD) {
+            attritionLoss = Math.max(1, Math.floor(beforeTroops * LOW_SUPPLY_ATTRITION_RATIO));
+            legion.troops = Math.max(0, beforeTroops - attritionLoss);
+            logs.push(`attrition:${legion.id}:${attritionLoss}`);
+        }
+
+        supplyReports.push({
+            legionId: legion.id,
+            supplyBefore: beforeSupply,
+            supplyAfter: legion.supply,
+            troopsBefore: beforeTroops,
+            troopsAfter: legion.troops,
+            attritionLoss,
+        });
+    });
+
+    return supplyReports;
+};
 
 const applyMoveCommand = (nextCampaignState, command, logs) => {
     const legionId = command?.payload?.legionId;
@@ -70,11 +106,52 @@ const applyAttackCommand = (nextCampaignState, command, rngSeed, battleReports, 
     logs.push(`attack failed:${legionId}:${targetProvinceId}`);
 };
 
+const applyNegotiateCommand = (nextCampaignState, command, diplomacyChanges, logs) => {
+    const payload = command?.payload || {};
+    const fromFactionId = payload.factionId || nextCampaignState?.assignedFactionId || null;
+    const targetFactionId = payload.targetFactionId;
+    const action = payload.action;
+
+    if (!fromFactionId || !targetFactionId || !action) return;
+    if (fromFactionId === targetFactionId) return;
+    const fromFaction = nextCampaignState?.factions?.[fromFactionId];
+    const targetFaction = nextCampaignState?.factions?.[targetFactionId];
+    if (!fromFaction || !targetFaction) return;
+
+    const relationDeltaByAction = {
+        FORM_ALLIANCE: 12,
+        OFFER_TRUCE: 7,
+        DEMAND_TRIBUTE: -8,
+        THREATEN: -12,
+    };
+    const relationDelta = relationDeltaByAction[action] ?? 0;
+
+    const fromRelations = { ...(fromFaction.relations || {}) };
+    const targetRelations = { ...(targetFaction.relations || {}) };
+
+    fromRelations[targetFactionId] = clamp((fromRelations[targetFactionId] || 50) + relationDelta, 0, 100);
+    targetRelations[fromFactionId] = clamp((targetRelations[fromFactionId] || 50) + relationDelta, 0, 100);
+
+    fromFaction.relations = fromRelations;
+    targetFaction.relations = targetRelations;
+
+    diplomacyChanges.push({
+        fromFactionId,
+        targetFactionId,
+        action,
+        relationDelta,
+        relationAfter: fromRelations[targetFactionId],
+    });
+    logs.push(`diplomacy:${fromFactionId}->${targetFactionId}:${action}`);
+};
+
 export function resolveTurn(state, commandQueue = [], rngSeed = Date.now()) {
     const nextCampaignState = clone(state?.campaignState || {});
     const logs = [];
     const battleReports = [];
+    const diplomacyChanges = [];
     const commands = Array.isArray(commandQueue) ? commandQueue : [];
+    const supplyReports = applySupplyPhase(nextCampaignState, logs);
 
     commands.forEach((command) => {
         if (!command || typeof command !== 'object') return;
@@ -84,8 +161,16 @@ export function resolveTurn(state, commandQueue = [], rngSeed = Date.now()) {
         }
         if (command.type === 'ATTACK_PROVINCE') {
             applyAttackCommand(nextCampaignState, command, rngSeed, battleReports, logs);
+            return;
+        }
+        if (command.type === 'NEGOTIATE') {
+            applyNegotiateCommand(nextCampaignState, command, diplomacyChanges, logs);
         }
     });
+
+    nextCampaignState.currentTurn = Number(nextCampaignState.currentTurn || 1) + 1;
+    nextCampaignState.currentDay = Number(nextCampaignState.currentDay || 0) + TURN_INTERVAL_DAYS;
+    nextCampaignState.phase = 'PREPARATION';
 
     return {
         phaseOrder: PHASE_ORDER,
@@ -94,9 +179,11 @@ export function resolveTurn(state, commandQueue = [], rngSeed = Date.now()) {
         statePatch: {
             provinces: nextCampaignState?.provinces || {},
             legions: nextCampaignState?.legions || {},
+            factions: nextCampaignState?.factions || {},
         },
         battleReports,
-        diplomacyChanges: [],
+        diplomacyChanges,
+        supplyReports,
         eventTriggers: [],
         logs,
         nextCampaignState,

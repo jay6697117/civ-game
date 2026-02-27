@@ -7,6 +7,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Icon } from '../common/UIComponents';
 import { getDifficultyOptions, DEFAULT_DIFFICULTY } from '../../config/difficulty';
 import { getScenarioOptions } from '../../config/scenarios';
+import { THREE_KINGDOMS_FACTIONS } from '../../config';
+import { assignRandomFactionByTier } from '../../logic/three-kingdoms/assignment';
 
 /**
  * 新档模式选择模态框组件
@@ -18,15 +20,30 @@ export const DifficultySelectionModal = ({ isOpen, onConfirm, onCancel }) => {
     const [selectedDifficulty, setSelectedDifficulty] = useState(DEFAULT_DIFFICULTY);
     const [mode, setMode] = useState('standard');
     const [selectedScenario, setSelectedScenario] = useState(null);
+    const [assignedFaction, setAssignedFaction] = useState(null);
     const [empireName, setEmpireName] = useState(''); // 帝国/国家名称
     const difficultyOptions = getDifficultyOptions();
     const scenarioOptions = getScenarioOptions();
+
+    const rerollCampaignFaction = () => {
+        const assigned = assignRandomFactionByTier({
+            factions: THREE_KINGDOMS_FACTIONS,
+            allowedTiers: ['A', 'B', 'C'],
+            seed: Date.now(),
+        });
+        setAssignedFaction(assigned);
+    };
 
     useEffect(() => {
         if (!isOpen) return;
         setSelectedDifficulty(DEFAULT_DIFFICULTY);
         setMode('standard');
         setSelectedScenario(scenarioOptions[0]?.id ?? null);
+        setAssignedFaction(assignRandomFactionByTier({
+            factions: THREE_KINGDOMS_FACTIONS,
+            allowedTiers: ['A', 'B', 'C'],
+            seed: Date.now(),
+        }));
         setEmpireName(''); // 重置帝国名称
     }, [isOpen, scenarioOptions]);
 
@@ -36,6 +53,10 @@ export const DifficultySelectionModal = ({ isOpen, onConfirm, onCancel }) => {
             scenarioId: mode === 'scenario' ? selectedScenario : null,
             mode,
             empireName: empireName.trim() || '我的帝国', // 传递帝国名称，默认为"我的帝国"
+            gameMode: mode === 'campaign' ? 'three_kingdoms' : 'classic',
+            campaignStartYear: mode === 'campaign' ? 190 : null,
+            forcedRandomFaction: mode === 'campaign',
+            selectedFactionId: mode === 'campaign' ? assignedFaction?.id : null,
         });
     };
 
@@ -127,6 +148,14 @@ export const DifficultySelectionModal = ({ isOpen, onConfirm, onCancel }) => {
                                         : 'bg-gray-700/40 text-gray-300 border border-transparent hover:border-gray-500/40'}`}
                                 >
                                     情景模式
+                                </button>
+                                <button
+                                    onClick={() => setMode('campaign')}
+                                    className={`px-3 py-1 rounded-full text-[10px] font-semibold transition-colors ${mode === 'campaign'
+                                        ? 'bg-red-500/20 text-red-300 border border-red-400/40'
+                                        : 'bg-gray-700/40 text-gray-300 border border-transparent hover:border-gray-500/40'}`}
+                                >
+                                    群雄战役
                                 </button>
                             </div>
                         </div>
@@ -232,6 +261,34 @@ export const DifficultySelectionModal = ({ isOpen, onConfirm, onCancel }) => {
                                     </motion.div>
                                 );
                             })}
+
+                            {mode === 'campaign' && (
+                                <div className="rounded-lg border-2 border-red-500/40 bg-red-900/20 p-3 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-base font-bold text-red-200">190年 · 群雄战役</h3>
+                                        <button
+                                            onClick={rerollCampaignFaction}
+                                            className="px-2 py-1 text-[10px] rounded border border-red-400/40 text-red-200 hover:bg-red-500/20 transition-colors"
+                                        >
+                                            重新随机诸侯
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-gray-300">
+                                        开局将按强弱分档随机分配势力，进入东汉末年州郡争夺战。
+                                    </p>
+                                    {assignedFaction && (
+                                        <div className="rounded border border-red-400/30 bg-black/30 p-2.5">
+                                            <div className="text-[10px] text-gray-400">当前分配势力</div>
+                                            <div className="text-sm font-bold text-red-200 mt-0.5">
+                                                {assignedFaction.name} · {assignedFaction.title}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 mt-1">
+                                                势力档位：{assignedFaction.tier} · 初始州：{assignedFaction.capitalProvinceId}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* 帝国名称输入 */}
@@ -262,7 +319,9 @@ export const DifficultySelectionModal = ({ isOpen, onConfirm, onCancel }) => {
                                         <span className="font-bold">提示：</span>
                                         {mode === 'standard'
                                             ? '开始新游戏不会删除您的现有存档，您可以随时通过读取存档继续之前的游戏。'
-                                            : '情景模式会覆盖部分初始状态，可在配置文件中自由调整，难度默认普通。'}
+                                            : mode === 'scenario'
+                                                ? '情景模式会覆盖部分初始状态，可在配置文件中自由调整，难度默认普通。'
+                                                : '群雄战役会启用三国专属战役模式，并使用新版战役存档。'}
                                     </p>
                                 </div>
                             </div>
@@ -281,7 +340,7 @@ export const DifficultySelectionModal = ({ isOpen, onConfirm, onCancel }) => {
                                     onClick={handleConfirm}
                                     className="flex-1 px-4 py-2.5 rounded-lg text-sm font-bold bg-gradient-to-r from-red-600 via-red-500 to-orange-500 hover:from-red-500 hover:via-red-400 hover:to-orange-400 text-white shadow-lg transition-all"
                                 >
-                                    {mode === 'scenario' ? '开始情景' : '开始新游戏'}
+                                    {mode === 'scenario' ? '开始情景' : mode === 'campaign' ? '进入群雄战役' : '开始新游戏'}
                                 </button>
                             </div>
                         </div>

@@ -2100,9 +2100,17 @@ function GameApp({ gameState }) {
             {/* 难度选择弹窗 */}
             <DifficultySelectionModal
                 isOpen={showDifficultyModal}
-                onConfirm={({ difficulty, scenarioId, empireName }) => {
+                onConfirm={({ difficulty, scenarioId, empireName, gameMode, campaignStartYear, forcedRandomFaction, selectedFactionId }) => {
                     setShowDifficultyModal(false);
-                    gameState.resetGame({ difficulty, scenarioId, empireName });
+                    gameState.resetGame({
+                        difficulty,
+                        scenarioId,
+                        empireName,
+                        gameMode,
+                        campaignStartYear,
+                        forcedRandomFaction,
+                        selectedFactionId,
+                    });
                 }}
                 onCancel={() => setShowDifficultyModal(false)}
             />

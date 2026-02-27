@@ -1812,7 +1812,8 @@ export const useGameState = () => {
         } catch (error) {
             console.warn('Auto-load failed:', error);
         }
-    }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // bootstrap auto-load should run once at startup
 
     const triggerSavingIndicator = () => {
         setIsSaving(true);

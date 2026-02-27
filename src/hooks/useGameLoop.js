@@ -707,11 +707,11 @@ export const useGameLoop = (gameState, addLog, actions) => {
     // 初始化/同步 Ref
     useEffect(() => {
         if (classWealthHistory) classWealthHistoryRef.current = classWealthHistory;
-    }, []); // 仅挂载时同步，后续由 loop 维护
+    }, [classWealthHistory]);
 
     useEffect(() => {
         if (classNeedsHistory) classNeedsHistoryRef.current = classNeedsHistory;
-    }, []);
+    }, [classNeedsHistory]);
 
     useEffect(() => {
         if (market?.priceHistory) {
@@ -721,7 +721,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
                 demand: market.demandHistory || {},
             };
         }
-    }, []);
+    }, [market?.priceHistory, market?.supplyHistory, market?.demandHistory]);
 
     // ========== 历史数据节流 ==========
     // 每 HISTORY_UPDATE_INTERVAL 个 tick 才更新一次历史数据 State
@@ -810,10 +810,7 @@ export const useGameLoop = (gameState, addLog, actions) => {
             foreignInvestments, // [NEW] 海外投资
             diplomaticReputation, // [FIX] 外交声誉
         };
-    }, [resources, market, buildings, buildingUpgrades, population, popStructure, maxPopBonus, epoch, techsUnlocked, decrees, gameSpeed, gameMode, assignedFactionId, campaignState, turnQueue, commitTurn, nations, livingStandardStreaks, migrationCooldowns, taxShock, army, militaryQueue, jobFill, jobsAvailable, activeBuffs, activeDebuffs, taxPolicies, classWealthHistory, classNeedsHistory, militaryWageRatio, classApproval, daysElapsed, activeFestivalEffects, lastFestivalYear, isPaused, autoSaveInterval, isAutoSaveEnabled, lastAutoSaveTime, merchantState, tradeRoutes, diplomacyOrganizations, vassalDiplomacyQueue, vassalDiplomacyHistory, tradeStats, actions, actionCooldowns, actionUsage, promiseTasks, activeEventEffects, eventEffectSettings, rebellionStates, classInfluence, totalInfluence, birthAccumulator, stability, rulingCoalition, legitimacy, difficulty, officials, officialsSimCursor, activeDecrees, expansionSettings, quotaTargets, officialCapacity, ministerAssignments, ministerAutoExpansion, lastMinisterExpansionDay, priceControls, foreignInvestments, diplomaticReputation]);
-    // Note: classWealth is intentionally excluded from dependencies to prevent infinite loop
-    // when setClassWealth is called inside Promise chains within this effect.
-    // The latest classWealth value is available via stateRef.current.classWealth
+    }, [resources, market, buildings, buildingUpgrades, autoRecruitEnabled, targetArmyComposition, population, popStructure, maxPopBonus, epoch, techsUnlocked, decrees, gameSpeed, gameMode, assignedFactionId, campaignState, turnQueue, commitTurn, nations, classWealth, livingStandardStreaks, migrationCooldowns, taxShock, army, militaryQueue, jobFill, jobsAvailable, activeBuffs, activeDebuffs, taxPolicies, classWealthHistory, classNeedsHistory, militaryWageRatio, classApproval, daysElapsed, activeFestivalEffects, lastFestivalYear, isPaused, autoSaveInterval, isAutoSaveEnabled, lastAutoSaveTime, merchantState, tradeRoutes, diplomacyOrganizations, vassalDiplomacyQueue, vassalDiplomacyHistory, tradeStats, actions, actionCooldowns, actionUsage, promiseTasks, activeEventEffects, eventEffectSettings, rebellionStates, classInfluence, totalInfluence, birthAccumulator, stability, rulingCoalition, legitimacy, difficulty, officials, officialsSimCursor, activeDecrees, expansionSettings, quotaTargets, officialCapacity, ministerAssignments, ministerAutoExpansion, lastMinisterExpansionDay, priceControls, foreignInvestments, diplomaticReputation]);
 
     // 监听国家列表变化，自动清理无效的贸易路线和商人派驻（修复暂停状态下无法清理的问题）
     const lastCleanupRef = useRef({ tradeRoutesLength: 0, merchantAssignmentsKeys: '', pendingTradesLength: 0 });
@@ -5135,5 +5132,6 @@ export const useGameLoop = (gameState, addLog, actions) => {
         }, tickInterval); // 根据游戏速度动态调整执行频率
 
         return () => clearInterval(timer);
-    }, [gameSpeed, isPaused, activeFestivalEffects, setFestivalModal, setActiveFestivalEffects, setLastFestivalYear, lastFestivalYear, setIsPaused]); // 依赖游戏速度、暂停状态和庆典相关状态
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [gameSpeed, isPaused, activeFestivalEffects, setFestivalModal, setActiveFestivalEffects, setLastFestivalYear, lastFestivalYear, setIsPaused]); // 长循环逻辑依赖 stateRef，保持最小触发面以避免重复注册定时器
 };

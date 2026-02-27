@@ -56,6 +56,8 @@ import { AchievementsModal } from './components/modals/AchievementsModal';
 import OfficialOverstaffModal from './components/modals/OfficialOverstaffModal';
 import { AchievementToast } from './components/common/AchievementToast';
 import { DonateModal } from './components/modals/DonateModal';
+import { StrategyMapStage } from './components/strategy-map/StrategyMapStage';
+import { CampaignSidePanel } from './components/strategy-map/CampaignSidePanel';
 import { executeStrategicAction, STRATEGIC_ACTIONS } from './logic/strategicActions';
 import { getOrganizationStage, getPhaseFromStage } from './logic/organizationSystem';
 import { createPromiseTask, PROMISE_CONFIG } from './logic/promiseTasks';
@@ -1199,6 +1201,21 @@ function GameApp({ gameState }) {
 
                     {/* 中间内容区 - 主操作面板 */}
                     <section className="md:col-span-1 lg:col-span-8 space-y-3 sm:space-y-4 order-1 md:order-2 lg:order-2">
+                        {gameState.gameMode === 'three_kingdoms' && gameState.campaignState && (
+                            <div className="grid grid-cols-1 xl:grid-cols-[3fr_1.2fr] gap-3">
+                                <StrategyMapStage
+                                    campaignState={gameState.campaignState}
+                                    selectedProvinceId={gameState.selectedProvinceId}
+                                    onSelectProvince={gameState.setSelectedProvinceId}
+                                />
+                                <CampaignSidePanel
+                                    campaignState={gameState.campaignState}
+                                    selectedProvinceId={gameState.selectedProvinceId}
+                                    assignedFactionId={gameState.assignedFactionId}
+                                />
+                            </div>
+                        )}
+
                         {/* 标签页容器 */}
                         <div className="relative glass-epic rounded-2xl border border-theme-border shadow-monument overflow-hidden min-h-[500px] animate-epic-entrance tab-container-landscape">
                             {/* 背景装饰 */}

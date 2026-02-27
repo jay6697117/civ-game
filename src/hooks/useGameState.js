@@ -2,12 +2,13 @@
 // 集中管理所有游戏状态，避免App.jsx中状态定义过多
 
 import { useEffect, useRef, useState } from 'react';
-import { COUNTRIES, DEFAULT_VASSAL_STATUS, RESOURCES, STRATA } from '../config';
+import { COUNTRIES, DEFAULT_VASSAL_STATUS, RESOURCES, STRATA, THREE_KINGDOMS_FACTIONS } from '../config';
 import { HISTORY_STORAGE_LIMIT, LOG_STORAGE_LIMIT } from '../config/gameConstants';
 import { isOldUpgradeFormat, migrateUpgradesToNewFormat } from '../utils/buildingUpgradeUtils';
 import { migrateAllOfficialsForInvestment } from '../logic/officials/migration';
 import { DEFAULT_DIFFICULTY, getDifficultyConfig, getStartingSilverMultiplier, getInitialBuildings } from '../config/difficulty';
 import { getScenarioById } from '../config/scenarios';
+import { assignRandomFactionByTier } from '../logic/three-kingdoms/assignment';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
@@ -29,6 +30,10 @@ const SAVE_IDB_STORE = 'saves';
 const LEGACY_SAVE_KEY = 'civ_game_save_data_v1';
 const ACHIEVEMENT_STORAGE_KEY = 'civ_game_achievements_v1';
 const ACHIEVEMENT_PROGRESS_KEY = 'civ_game_achievement_progress_v1';
+const NEW_GAME_MODE_KEY = 'new_game_mode';
+const NEW_GAME_ASSIGNED_FACTION_KEY = 'new_game_assigned_faction';
+const NEW_GAME_CAMPAIGN_START_YEAR_KEY = 'new_game_campaign_start_year';
+const NEW_GAME_FORCED_RANDOM_FACTION_KEY = 'new_game_forced_random_faction';
 
 const hasIndexedDb = () => typeof indexedDB !== 'undefined';
 
@@ -1103,6 +1108,13 @@ export const useGameState = () => {
     const [isSaving, setIsSaving] = useState(false); // UI保存状态指示
     const [difficulty, setDifficulty] = useState(DEFAULT_DIFFICULTY); // 游戏难度
     const [empireName, setEmpireName] = useState('我的帝国'); // 国家/帝国名称
+    const [gameMode, setGameMode] = useState('classic'); // 游戏模式：classic | three_kingdoms
+    const [campaignStartYear, setCampaignStartYear] = useState(190);
+    const [assignedFactionId, setAssignedFactionId] = useState(null);
+    const [campaignState, setCampaignState] = useState(null);
+    const [turnQueue, setTurnQueue] = useState([]);
+    const [selectedProvinceId, setSelectedProvinceId] = useState(null);
+    const [selectedLegionId, setSelectedLegionId] = useState(null);
     const [eventConfirmationEnabled, setEventConfirmationEnabled] = useState(false); // 事件二次确认开关
     const savingIndicatorTimer = useRef(null);
     const autoSaveQuotaNotifiedRef = useRef(false);
@@ -1446,6 +1458,36 @@ export const useGameState = () => {
         setLogs(prev => [message, ...prev].slice(0, 8));
     };
 
+    const initializeThreeKingdomsStart = () => {
+        setGameMode('three_kingdoms');
+        localStorage.removeItem(NEW_GAME_MODE_KEY);
+
+        const startYearRaw = localStorage.getItem(NEW_GAME_CAMPAIGN_START_YEAR_KEY);
+        const parsedStartYear = Number(startYearRaw);
+        const nextStartYear = Number.isFinite(parsedStartYear) ? parsedStartYear : 190;
+        setCampaignStartYear(nextStartYear);
+        localStorage.removeItem(NEW_GAME_CAMPAIGN_START_YEAR_KEY);
+
+        const forceReroll = localStorage.getItem(NEW_GAME_FORCED_RANDOM_FACTION_KEY) === 'true';
+        localStorage.removeItem(NEW_GAME_FORCED_RANDOM_FACTION_KEY);
+
+        const storedFactionId = localStorage.getItem(NEW_GAME_ASSIGNED_FACTION_KEY);
+        let nextFactionId = storedFactionId || null;
+        if (!nextFactionId || forceReroll) {
+            const assigned = assignRandomFactionByTier({
+                factions: THREE_KINGDOMS_FACTIONS,
+                allowedTiers: ['A', 'B', 'C'],
+                seed: Date.now(),
+            });
+            nextFactionId = assigned?.id || null;
+        }
+        setAssignedFactionId(nextFactionId);
+        localStorage.removeItem(NEW_GAME_ASSIGNED_FACTION_KEY);
+
+        // 战役模式默认回到总览，等待地图/战役模块接管 UI
+        setActiveTab('overview');
+    };
+
     const applyScenarioConfig = (scenarioId) => {
         if (!scenarioId) return;
         const scenario = getScenarioById(scenarioId);
@@ -1582,6 +1624,7 @@ export const useGameState = () => {
                 localStorage.removeItem('start_new_game');
                 const newGameDifficulty = localStorage.getItem('new_game_difficulty');
                 let difficultyForNewGame = DEFAULT_DIFFICULTY;
+                const newGameMode = localStorage.getItem(NEW_GAME_MODE_KEY) || 'classic';
                 if (newGameDifficulty) {
                     console.log(`[DEBUG] Initializing New Game with Difficulty: ${newGameDifficulty}`);
                     difficultyForNewGame = newGameDifficulty;
@@ -1594,14 +1637,21 @@ export const useGameState = () => {
                     setEmpireName(newGameEmpireName);
                     localStorage.removeItem('new_game_empire_name');
                 }
-                const newGameScenario = localStorage.getItem('new_game_scenario');
-                if (newGameScenario) {
-                    applyScenarioConfig(newGameScenario);
-                    localStorage.removeItem('new_game_scenario');
-                } else {
-                    // Standard Game: Apply difficulty-based initial buildings
+                if (newGameMode === 'three_kingdoms') {
+                    initializeThreeKingdomsStart();
                     const initialBuildings = getInitialBuildings(difficultyForNewGame);
                     setBuildings(initialBuildings);
+                } else {
+                    setGameMode('classic');
+                    const newGameScenario = localStorage.getItem('new_game_scenario');
+                    if (newGameScenario) {
+                        applyScenarioConfig(newGameScenario);
+                        localStorage.removeItem('new_game_scenario');
+                    } else {
+                        // Standard Game: Apply difficulty-based initial buildings
+                        const initialBuildings = getInitialBuildings(difficultyForNewGame);
+                        setBuildings(initialBuildings);
+                    }
                 }
 
                 // Difficulty-based starting treasury boost
@@ -1673,19 +1723,27 @@ export const useGameState = () => {
                 // No saves found, start fresh - check for new game difficulty
                 const newGameDifficulty = localStorage.getItem('new_game_difficulty');
                 let difficultyForNewGame = DEFAULT_DIFFICULTY;
+                const newGameMode = localStorage.getItem(NEW_GAME_MODE_KEY) || 'classic';
                 if (newGameDifficulty) {
                     difficultyForNewGame = newGameDifficulty;
                     setDifficulty(newGameDifficulty);
                     localStorage.removeItem('new_game_difficulty');
                 }
-                const newGameScenario = localStorage.getItem('new_game_scenario');
-                if (newGameScenario) {
-                    applyScenarioConfig(newGameScenario);
-                    localStorage.removeItem('new_game_scenario');
-                } else {
-                    // Standard Game: Apply difficulty-based initial buildings
+                if (newGameMode === 'three_kingdoms') {
+                    initializeThreeKingdomsStart();
                     const initialBuildings = getInitialBuildings(difficultyForNewGame);
                     setBuildings(initialBuildings);
+                } else {
+                    setGameMode('classic');
+                    const newGameScenario = localStorage.getItem('new_game_scenario');
+                    if (newGameScenario) {
+                        applyScenarioConfig(newGameScenario);
+                        localStorage.removeItem('new_game_scenario');
+                    } else {
+                        // Standard Game: Apply difficulty-based initial buildings
+                        const initialBuildings = getInitialBuildings(difficultyForNewGame);
+                        setBuildings(initialBuildings);
+                    }
                 }
 
                 // Difficulty-based starting treasury boost
@@ -1834,6 +1892,13 @@ export const useGameState = () => {
                 lastAutoSaveTime: nextLastAuto,
                 difficulty,
                 empireName,
+                gameMode,
+                campaignStartYear,
+                assignedFactionId,
+                campaignState,
+                turnQueue,
+                selectedProvinceId,
+                selectedLegionId,
                 eventConfirmationEnabled,
                 updatedAt: timestamp,
                 saveSource: source,
@@ -2298,6 +2363,13 @@ export const useGameState = () => {
         setLastAutoSaveTime(data.lastAutoSaveTime || Date.now());
         setDifficulty(data.difficulty || DEFAULT_DIFFICULTY);
         setEmpireName(data.empireName || '我的帝国');
+        setGameMode(data.gameMode || 'classic');
+        setCampaignStartYear(Number.isFinite(data.campaignStartYear) ? data.campaignStartYear : 190);
+        setAssignedFactionId(data.assignedFactionId || null);
+        setCampaignState(data.campaignState || null);
+        setTurnQueue(Array.isArray(data.turnQueue) ? data.turnQueue : []);
+        setSelectedProvinceId(data.selectedProvinceId || null);
+        setSelectedLegionId(data.selectedLegionId || null);
         setEventEffectSettings({
             ...DEFAULT_EVENT_EFFECT_SETTINGS,
             ...(data.eventEffectSettings || {}),
@@ -3199,6 +3271,18 @@ export const useGameState = () => {
         if (normalized.empireName) {
             localStorage.setItem('new_game_empire_name', normalized.empireName);
         }
+        if (normalized.gameMode) {
+            localStorage.setItem(NEW_GAME_MODE_KEY, normalized.gameMode);
+        }
+        if (normalized.selectedFactionId) {
+            localStorage.setItem(NEW_GAME_ASSIGNED_FACTION_KEY, normalized.selectedFactionId);
+        }
+        if (normalized.forcedRandomFaction) {
+            localStorage.setItem(NEW_GAME_FORCED_RANDOM_FACTION_KEY, 'true');
+        }
+        if (normalized.campaignStartYear) {
+            localStorage.setItem(NEW_GAME_CAMPAIGN_START_YEAR_KEY, String(normalized.campaignStartYear));
+        }
         window.location.reload();
     };
 
@@ -3253,6 +3337,41 @@ export const useGameState = () => {
         return !!localStorage.getItem(AUTOSAVE_KEY);
     };
 
+    const queueTurnCommand = (command) => {
+        if (!command || typeof command !== 'object') return null;
+        const enriched = {
+            ...command,
+            _id: command._id || `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        };
+        setTurnQueue(prev => [...prev, enriched]);
+        return enriched;
+    };
+
+    const cancelTurnCommand = (commandRef) => {
+        setTurnQueue(prev => {
+            if (typeof commandRef === 'number') {
+                return prev.filter((_, index) => index !== commandRef);
+            }
+            const targetId = typeof commandRef === 'string' ? commandRef : commandRef?._id;
+            if (!targetId) return prev;
+            return prev.filter(entry => entry?._id !== targetId);
+        });
+    };
+
+    const commitTurn = () => {
+        setTurnQueue([]);
+    };
+
+    const rerollAssignedFaction = (allowedTiers = ['A', 'B', 'C']) => {
+        const assigned = assignRandomFactionByTier({
+            factions: THREE_KINGDOMS_FACTIONS,
+            allowedTiers,
+            seed: Date.now(),
+        });
+        setAssignedFactionId(assigned?.id || null);
+        return assigned;
+    };
+
     // 返回所有状态和更新函数
     return {
         // 资源
@@ -3305,6 +3424,20 @@ export const useGameState = () => {
         isSaving,
         difficulty,
         setDifficulty,
+        gameMode,
+        setGameMode,
+        campaignStartYear,
+        setCampaignStartYear,
+        assignedFactionId,
+        setAssignedFactionId,
+        campaignState,
+        setCampaignState,
+        turnQueue,
+        setTurnQueue,
+        selectedProvinceId,
+        setSelectedProvinceId,
+        selectedLegionId,
+        setSelectedLegionId,
 
         // 政令与外交
         nations,
@@ -3539,6 +3672,10 @@ export const useGameState = () => {
         importSaveFromText,
         hasAutoSave,
         resetGame,
+        queueTurnCommand,
+        cancelTurnCommand,
+        commitTurn,
+        rerollAssignedFaction,
         eventConfirmationEnabled,
         setEventConfirmationEnabled,
         // 国家/帝国名称

@@ -1,6 +1,20 @@
 import React from 'react';
 
 const DEFAULT_RECRUIT_TROOPS = 120;
+const STANCE_LIST = ['BALANCED', 'AGGRESSIVE', 'DEFENSIVE'];
+
+const STANCE_SUPPLY_MULTIPLIER = {
+    AGGRESSIVE: 1.2,
+    BALANCED: 1,
+    DEFENSIVE: 0.9,
+};
+
+const estimateLegionSupplyNeed = (legion = {}) => {
+    const stance = legion.stance || 'BALANCED';
+    const stanceMultiplier = STANCE_SUPPLY_MULTIPLIER[stance] || 1;
+    const fatigueCost = Math.floor((Number(legion.fatigue || 0)) / 20);
+    return Math.max(6, Math.floor((18 * stanceMultiplier) + fatigueCost));
+};
 
 export const CampaignSidePanel = ({
     campaignState,
@@ -20,6 +34,11 @@ export const CampaignSidePanel = ({
         : [];
     const selectedLegion = selectedLegionId ? campaignState?.legions?.[selectedLegionId] : null;
 
+    const allGenerals = Object.values(campaignState?.generals || {});
+    const availableGenerals = allGenerals.filter((general) => (
+        general.factionId === assignedFactionId && general.status === 'active'
+    ));
+
     const queue = (command, successMessage, errorMessage) => {
         if (typeof onQueueCommand !== 'function') return;
         const queued = onQueueCommand(command);
@@ -38,6 +57,8 @@ export const CampaignSidePanel = ({
         }
     };
 
+    const nextLegionSupplyNeed = selectedLegion ? estimateLegionSupplyNeed(selectedLegion) : 0;
+
     return (
         <aside className="rounded-xl border border-red-500/30 bg-black/40 p-3 space-y-2">
             <h3 className="text-sm font-bold text-red-200">战役侧栏</h3>
@@ -51,6 +72,13 @@ export const CampaignSidePanel = ({
                         <div className="text-xs text-gray-300">选中州</div>
                         <div className="text-sm font-bold text-red-100 mt-0.5">{province.name}</div>
                         <div className="text-[11px] text-gray-300 mt-1">当前归属：{ownerFaction?.name || '未知'}</div>
+                        <div className="text-[11px] text-amber-200 mt-1">补给库存：{Math.floor(Number(province.stockpileSupply || 0))}</div>
+                        <div className="text-[11px] text-lime-200">粮草库存：{Math.floor(Number(province.stockpileGrain || 0))}</div>
+                        {selectedLegion && selectedLegion.currentProvinceId === province.id && (
+                            <div className="text-[10px] text-gray-300 mt-1">
+                                下回合预计补给消耗：{nextLegionSupplyNeed}
+                            </div>
+                        )}
                     </div>
 
                     <div className="rounded-md border border-gray-700/60 bg-black/30 p-2.5">
@@ -76,13 +104,23 @@ export const CampaignSidePanel = ({
                                 }`}
                                 aria-label={`选择军团 ${legion.id}`}
                             >
-                                {legion.id} · 兵力 {legion.troops} · 补给 {legion.supply}
+                                {legion.id} · 兵力 {legion.troops} · 补给 {Math.floor(Number(legion.supply || 0))}
                             </button>
                         ))}
                         {stationedLegions.length === 0 && (
                             <div className="text-[11px] text-gray-500">暂无驻扎军团</div>
                         )}
                     </div>
+
+                    {selectedLegion && selectedLegion.currentProvinceId === province.id && (
+                        <div className="rounded-md border border-gray-700/60 bg-black/30 p-2.5 space-y-1 text-[11px] text-gray-300">
+                            <div className="font-semibold text-gray-200">军团状态</div>
+                            <div>等级：{selectedLegion.level || 1}</div>
+                            <div>经验：{selectedLegion.experience || 0}</div>
+                            <div>疲劳：{selectedLegion.fatigue || 0}</div>
+                            <div>姿态：{selectedLegion.stance || 'BALANCED'}</div>
+                        </div>
+                    )}
 
                     <div className="rounded-md border border-gray-700/60 bg-black/30 p-2.5 space-y-1.5">
                         <div className="text-xs font-semibold text-gray-200">命令</div>
@@ -109,25 +147,93 @@ export const CampaignSidePanel = ({
                         )}
 
                         {selectedLegion && selectedLegion.currentProvinceId === province.id && (
-                            <button
-                                type="button"
-                                className="w-full rounded border border-cyan-500/50 bg-cyan-500/15 px-2 py-1.5 text-xs text-cyan-100"
-                                onClick={() => queue(
-                                    {
-                                        type: 'FORTIFY',
-                                        payload: {
-                                            factionId: assignedFactionId,
-                                            legionId: selectedLegion.id,
-                                            provinceId: province.id,
+                            <>
+                                <button
+                                    type="button"
+                                    className="w-full rounded border border-cyan-500/50 bg-cyan-500/15 px-2 py-1.5 text-xs text-cyan-100"
+                                    onClick={() => queue(
+                                        {
+                                            type: 'FORTIFY',
+                                            payload: {
+                                                factionId: assignedFactionId,
+                                                legionId: selectedLegion.id,
+                                                provinceId: province.id,
+                                            },
                                         },
-                                    },
-                                    `已下达固守命令：${selectedLegion.id}`,
-                                    '固守命令下达失败',
-                                )}
-                                aria-label={`固守 ${selectedLegion.id}`}
-                            >
-                                固守 {selectedLegion.id}
-                            </button>
+                                        `已下达固守命令：${selectedLegion.id}`,
+                                        '固守命令下达失败',
+                                    )}
+                                    aria-label={`固守 ${selectedLegion.id}`}
+                                >
+                                    固守 {selectedLegion.id}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="w-full rounded border border-violet-500/50 bg-violet-500/15 px-2 py-1.5 text-xs text-violet-100"
+                                    onClick={() => queue(
+                                        {
+                                            type: 'DRILL_LEGION',
+                                            payload: {
+                                                factionId: assignedFactionId,
+                                                legionId: selectedLegion.id,
+                                                provinceId: province.id,
+                                            },
+                                        },
+                                        `已下达操练命令：${selectedLegion.id}`,
+                                        '操练命令下达失败',
+                                    )}
+                                    aria-label={`操练 ${selectedLegion.id}`}
+                                >
+                                    操练 {selectedLegion.id}
+                                </button>
+
+                                {STANCE_LIST.map((stance) => (
+                                    <button
+                                        key={`${selectedLegion.id}_${stance}`}
+                                        type="button"
+                                        className="w-full rounded border border-fuchsia-500/50 bg-fuchsia-500/15 px-2 py-1.5 text-xs text-fuchsia-100"
+                                        onClick={() => queue(
+                                            {
+                                                type: 'SET_STANCE',
+                                                payload: {
+                                                    factionId: assignedFactionId,
+                                                    legionId: selectedLegion.id,
+                                                    stance,
+                                                },
+                                            },
+                                            `已切换姿态：${selectedLegion.id} -> ${stance}`,
+                                            '姿态切换失败',
+                                        )}
+                                        aria-label={`姿态 ${stance}`}
+                                    >
+                                        姿态 {stance}
+                                    </button>
+                                ))}
+
+                                {availableGenerals.map((general) => (
+                                    <button
+                                        key={`${selectedLegion.id}_${general.id}`}
+                                        type="button"
+                                        className="w-full rounded border border-amber-500/50 bg-amber-500/15 px-2 py-1.5 text-xs text-amber-100"
+                                        onClick={() => queue(
+                                            {
+                                                type: 'APPOINT_GENERAL',
+                                                payload: {
+                                                    factionId: assignedFactionId,
+                                                    legionId: selectedLegion.id,
+                                                    generalId: general.id,
+                                                },
+                                            },
+                                            `已任命武将：${general.name}`,
+                                            '任命武将失败',
+                                        )}
+                                        aria-label={`任命 ${general.name}`}
+                                    >
+                                        任命 {general.name}
+                                    </button>
+                                ))}
+                            </>
                         )}
 
                         {selectedLegion && selectedLegion.currentProvinceId === province.id && (province.neighbors || []).map((neighborId) => {

@@ -10,16 +10,27 @@ const buildCampaignContext = () => ({
             tao_qian: { id: 'tao_qian', treasury: 1000, grain: 1000 },
         },
         provinces: {
-            yanzhou: { id: 'yanzhou', ownerFactionId: 'cao_cao', neighbors: ['xuzhou'] },
-            xuzhou: { id: 'xuzhou', ownerFactionId: 'tao_qian', neighbors: ['yanzhou'] },
-            jingzhou: { id: 'jingzhou', ownerFactionId: 'tao_qian', neighbors: [] },
+            yanzhou: { id: 'yanzhou', ownerFactionId: 'cao_cao', neighbors: ['xuzhou'], stockpileSupply: 180 },
+            xuzhou: { id: 'xuzhou', ownerFactionId: 'tao_qian', neighbors: ['yanzhou'], stockpileSupply: 180 },
+            jingzhou: { id: 'jingzhou', ownerFactionId: 'tao_qian', neighbors: [], stockpileSupply: 180 },
         },
         generals: {
             g_cao_cao: { id: 'g_cao_cao', factionId: 'cao_cao', status: 'active' },
             g_tao_qian: { id: 'g_tao_qian', factionId: 'tao_qian', status: 'active' },
         },
         legions: {
-            l1: { id: 'l1', factionId: 'cao_cao', currentProvinceId: 'yanzhou' },
+            l1: {
+                id: 'l1',
+                factionId: 'cao_cao',
+                currentProvinceId: 'yanzhou',
+                stance: 'BALANCED',
+                supply: 70,
+                morale: 70,
+                level: 1,
+                experience: 0,
+                fatigue: 0,
+                lastActionTurn: 0,
+            },
         },
     },
 });
@@ -69,6 +80,36 @@ describe('turn commands', () => {
         );
         expect(result.ok).toBe(false);
         expect(result.code).toBe('APPOINT_GENERAL_NOT_OWNER');
+    });
+
+    it('rejects drill command for non-owned legion with explicit code', () => {
+        const context = buildCampaignContext();
+        const result = validateTurnCommand(
+            { type: 'DRILL_LEGION', payload: { legionId: 'l1', provinceId: 'yanzhou', factionId: 'tao_qian' } },
+            context,
+        );
+        expect(result.ok).toBe(false);
+        expect(result.code).toBe('DRILL_NOT_OWNER');
+    });
+
+    it('rejects drill command when legion is not in province', () => {
+        const context = buildCampaignContext();
+        const result = validateTurnCommand(
+            { type: 'DRILL_LEGION', payload: { legionId: 'l1', provinceId: 'xuzhou', factionId: 'cao_cao' } },
+            context,
+        );
+        expect(result.ok).toBe(false);
+        expect(result.code).toBe('DRILL_PROVINCE_MISMATCH');
+    });
+
+    it('rejects invalid stance value with explicit code', () => {
+        const context = buildCampaignContext();
+        const result = validateTurnCommand(
+            { type: 'SET_STANCE', payload: { legionId: 'l1', stance: 'RUSH', factionId: 'cao_cao' } },
+            context,
+        );
+        expect(result.ok).toBe(false);
+        expect(result.code).toBe('STANCE_INVALID');
     });
 
     it('keeps queue consistent after removing command by id', () => {

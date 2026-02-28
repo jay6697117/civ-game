@@ -33,5 +33,7 @@ describe('campaign flow', () => {
         expect(campaignState.assignedFactionId).toBe(faction.id);
         expect(campaignState.currentTurn).toBe(21);
         expect(campaignState.currentDay).toBe(200);
+        expect(Array.isArray(campaignState.reportHistory)).toBe(true);
+        expect(campaignState.reportHistory.length).toBe(20);
     });
 });

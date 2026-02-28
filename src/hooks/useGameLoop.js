@@ -972,34 +972,49 @@ export const useGameLoop = (gameState, addLog, actions) => {
 
                 let nextCampaignState = turnResult?.nextCampaignState || null;
                 const turnNotifications = [];
+                const turnNotificationKeys = new Set();
+                const pushTurnNotification = (notification, key) => {
+                    if (!notification || !key) return;
+                    if (turnNotificationKeys.has(key)) return;
+                    turnNotificationKeys.add(key);
+                    turnNotifications.push(notification);
+                };
 
                 if (Array.isArray(turnResult?.aiReports) && turnResult.aiReports.length > 0) {
                     const failedAiCount = turnResult.aiReports.filter((report) => report.status === 'FAILED').length;
-                    turnNotifications.push({
+                    pushTurnNotification({
                         id: `notify_ai_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                         type: failedAiCount > 0 ? 'warning' : 'info',
                         message: `AI 本回合执行 ${turnResult.aiReports.length} 条命令${failedAiCount > 0 ? `（失败 ${failedAiCount} 条）` : ''}`,
-                    });
+                    }, `ai_${currentDay}_${turnResult.aiReports.length}_${failedAiCount}`);
                 }
 
                 if (Array.isArray(turnResult?.battleReports) && turnResult.battleReports.length > 0) {
-                    turnNotifications.push({
+                    pushTurnNotification({
                         id: `notify_battle_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                         type: 'info',
                         message: `本回合发生 ${turnResult.battleReports.length} 场战斗`,
-                    });
+                    }, `battle_${currentDay}_${turnResult.battleReports.length}`);
                 }
 
                 if (Array.isArray(turnResult?.recruitReports)) {
                     turnResult.recruitReports
                         .filter((report) => report.status === 'FAILED')
                         .forEach((report) => {
-                            turnNotifications.push({
+                            pushTurnNotification({
                                 id: `notify_recruit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                                 type: 'error',
                                 message: `招募失败：${report.code || 'UNKNOWN'}`,
-                            });
+                            }, `recruit_fail_${currentDay}_${report.code}_${report.provinceId || 'unknown'}`);
                         });
+                }
+
+                if (Array.isArray(turnResult?.logisticsWarnings) && turnResult.logisticsWarnings.length > 0) {
+                    pushTurnNotification({
+                        id: `notify_logistics_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        type: 'warning',
+                        message: `后勤告警 ${turnResult.logisticsWarnings.length} 条`,
+                    }, `logistics_${currentDay}_${turnResult.logisticsWarnings.length}`);
                 }
 
                 if (nextCampaignState) {
@@ -1025,11 +1040,11 @@ export const useGameLoop = (gameState, addLog, actions) => {
                         eventResult.events.forEach((eventItem) => {
                             if (eventItem?.title) {
                                 addLog(`📜 ${eventItem.title}：${eventItem.summary || ''}`);
-                                turnNotifications.push({
+                                pushTurnNotification({
                                     id: `notify_event_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                                     type: 'info',
                                     message: `事件：${eventItem.title}`,
-                                });
+                                }, `event_${currentDay}_${eventItem.id || eventItem.title}`);
                             }
                         });
                     }
@@ -1045,11 +1060,11 @@ export const useGameLoop = (gameState, addLog, actions) => {
                             },
                         };
                         addLog(`🏆 战役胜利：${victoryResult.title}`);
-                        turnNotifications.push({
+                        pushTurnNotification({
                             id: `notify_victory_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                             type: 'success',
                             message: `战役胜利：${victoryResult.title}`,
-                        });
+                        }, `victory_${currentDay}_${victoryResult.type}`);
                         setIsPaused(true);
                     }
 

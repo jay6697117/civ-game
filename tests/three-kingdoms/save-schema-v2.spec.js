@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     assertCampaignSaveCompatibility,
     CAMPAIGN_SAVE_FORMAT_VERSION,
-    migrateCampaignSaveToV3,
+    migrateCampaignSaveToV4,
 } from '../../src/logic/three-kingdoms/saveSchema';
 
 describe('campaign save schema', () => {
@@ -16,8 +16,8 @@ describe('campaign save schema', () => {
         expect(() => assertCampaignSaveCompatibility({ saveFormatVersion: 2, gameMode: 'three_kingdoms' })).not.toThrow();
     });
 
-    it('migrates v2 campaign save shape to v3 fields', () => {
-        const migrated = migrateCampaignSaveToV3({
+    it('migrates v2 campaign save shape to latest fields', () => {
+        const migrated = migrateCampaignSaveToV4({
             saveFormatVersion: 2,
             campaignState: {
                 provinces: {
@@ -32,7 +32,10 @@ describe('campaign save schema', () => {
         expect(migrated.campaignState.turnMeta).toBeTruthy();
         expect(migrated.campaignState.lastTurnReport).toBeTruthy();
         expect(migrated.campaignState.aiState).toBeTruthy();
+        expect(Array.isArray(migrated.campaignState.reportHistory)).toBe(true);
         expect(Array.isArray(migrated.campaignState.provinces.yanzhou.garrison)).toBe(true);
         expect(migrated.campaignState.legions.l1.stance).toBeTruthy();
+        expect(migrated.campaignState.legions.l1.level).toBeTruthy();
+        expect(migrated.campaignState.provinces.yanzhou.stockpileSupply).toBeDefined();
     });
 });

@@ -19,7 +19,7 @@ import { getScenarioById } from '../config/scenarios';
 import { assignRandomFactionByTier } from '../logic/three-kingdoms/assignment';
 import { buildInitialCampaignState } from '../logic/three-kingdoms/campaignState';
 import { issueTurnCommand, removeTurnCommand } from '../logic/three-kingdoms/commands';
-import { assertCampaignSaveCompatibility, migrateCampaignSaveToV3 } from '../logic/three-kingdoms/saveSchema';
+import { assertCampaignSaveCompatibility, migrateCampaignSaveToV4 } from '../logic/three-kingdoms/saveSchema';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
@@ -27,7 +27,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 const SAVE_SLOT_COUNT = 10; // 手动存档槽位数量
 const SAVE_SLOT_PREFIX = 'civ_game_save_slot_';
 const AUTOSAVE_KEY = 'civ_game_autosave_v1';
-const SAVE_FORMAT_VERSION = 3;
+const SAVE_FORMAT_VERSION = 4;
 const SAVE_FILE_EXTENSION = 'cgsave';
 const SAVE_OBFUSCATION_KEY = 'civ_game_simple_mask_v1';
 // Lower soft limit to prefer IndexedDB earlier (localStorage quota issues)
@@ -1961,7 +1961,7 @@ export const useGameState = () => {
             throw new Error('存档数据无效');
         }
         assertCampaignSaveCompatibility(data);
-        data = migrateCampaignSaveToV3(data);
+        data = migrateCampaignSaveToV4(data);
         setResources(data.resources || INITIAL_RESOURCES, { reason: 'load_game', audit: false });
 
         // [FIX] 存档人口同步修复：防止population和popStructure不一致导致的恶性扣减循环

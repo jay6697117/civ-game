@@ -6,20 +6,46 @@ const seededRandom = (seedInput = Date.now()) => {
     return (seed - 1) / 2147483646;
 };
 
-const legionPower = (legion = {}) => {
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const getStanceFactor = (stance = 'BALANCED', mode = 'attack') => {
+    if (stance === 'AGGRESSIVE') {
+        return mode === 'attack' ? 1.15 : 0.9;
+    }
+    if (stance === 'DEFENSIVE') {
+        return mode === 'attack' ? 0.92 : 1.12;
+    }
+    return 1;
+};
+
+const getGeneralFactor = (legion = {}, generals = {}) => {
+    const generalId = legion?.generalId;
+    if (!generalId) return 1;
+    const leadership = Number(generals?.[generalId]?.leadership || 70);
+    return 1 + ((leadership - 70) * 0.003);
+};
+
+const legionPower = (legion = {}, { mode = 'attack', generals = {} } = {}) => {
     const troops = Number(legion.troops || 0);
     const supply = Number(legion.supply || 0);
-    const supplyFactor = Math.max(0.4, Math.min(1.2, supply / 100));
-    return troops * supplyFactor;
+    const morale = Number(legion.morale || 70);
+    const level = Number(legion.level || 1);
+    const supplyFactor = clamp(supply / 100, 0.4, 1.2);
+    const moraleFactor = clamp(morale / 100, 0.5, 1.15);
+    const stanceFactor = getStanceFactor(legion.stance || 'BALANCED', mode);
+    const levelFactor = 1 + (Math.min(Math.max(level - 1, 0), 9) * 0.04);
+    const generalFactor = getGeneralFactor(legion, generals);
+    return troops * supplyFactor * moraleFactor * stanceFactor * levelFactor * generalFactor;
 };
 
 export function resolveProvinceBattle({
     attacker = null,
     defenders = [],
     seed = Date.now(),
+    generals = {},
 } = {}) {
-    const attackerPower = legionPower(attacker);
-    const defenderPower = defenders.reduce((sum, legion) => sum + legionPower(legion), 0);
+    const attackerPower = legionPower(attacker, { mode: 'attack', generals });
+    const defenderPower = defenders.reduce((sum, legion) => sum + legionPower(legion, { mode: 'defense', generals }), 0);
 
     if (defenderPower <= 0) {
         return {

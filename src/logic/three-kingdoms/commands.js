@@ -3,6 +3,8 @@ export const TURN_COMMAND_TYPES = [
     'FORTIFY',
     'ATTACK_PROVINCE',
     'RECRUIT',
+    'DRILL_LEGION',
+    'SET_STANCE',
     'APPOINT_GENERAL',
     'NEGOTIATE',
     'END_TURN',
@@ -13,6 +15,8 @@ const commandRequirements = {
     FORTIFY: ['legionId', 'provinceId'],
     ATTACK_PROVINCE: ['legionId', 'targetProvinceId'],
     RECRUIT: ['provinceId', 'troops'],
+    DRILL_LEGION: ['legionId', 'provinceId'],
+    SET_STANCE: ['legionId', 'stance'],
     APPOINT_GENERAL: ['generalId', 'legionId'],
     NEGOTIATE: ['targetFactionId', 'action'],
     END_TURN: [],
@@ -114,6 +118,37 @@ const validateRecruitCommand = (command, context) => {
     return ok();
 };
 
+const validateDrillCommand = (command, context) => {
+    const campaignState = context?.campaignState;
+    if (!campaignState) return ok();
+
+    const payload = command.payload || {};
+    const factionId = resolveFactionId(payload, context);
+    const legion = campaignState.legions?.[payload.legionId];
+    const province = campaignState.provinces?.[payload.provinceId];
+
+    if (!legion) return fail('DRILL_LEGION_NOT_FOUND', 'Legion does not exist');
+    if (!province) return fail('DRILL_PROVINCE_NOT_FOUND', 'Province does not exist');
+    if (factionId && legion.factionId !== factionId) return fail('DRILL_NOT_OWNER', 'Legion does not belong to current faction');
+    if (legion.currentProvinceId !== payload.provinceId) return fail('DRILL_PROVINCE_MISMATCH', 'Legion is not stationed in target province');
+    if (factionId && province.ownerFactionId !== factionId) return fail('DRILL_NOT_OWNER', 'Province does not belong to current faction');
+    return ok();
+};
+
+const validStances = new Set(['BALANCED', 'AGGRESSIVE', 'DEFENSIVE']);
+const validateSetStanceCommand = (command, context) => {
+    const campaignState = context?.campaignState;
+    if (!campaignState) return ok();
+
+    const payload = command.payload || {};
+    const factionId = resolveFactionId(payload, context);
+    const legion = campaignState.legions?.[payload.legionId];
+    if (!legion) return fail('STANCE_LEGION_NOT_FOUND', 'Legion does not exist');
+    if (factionId && legion.factionId !== factionId) return fail('STANCE_NOT_OWNER', 'Legion does not belong to current faction');
+    if (!validStances.has(payload.stance)) return fail('STANCE_INVALID', 'Invalid stance value');
+    return ok();
+};
+
 const validateAppointGeneralCommand = (command, context) => {
     const campaignState = context?.campaignState;
     if (!campaignState) return ok();
@@ -150,6 +185,8 @@ const contextualValidators = {
     ATTACK_PROVINCE: validateAttackCommand,
     FORTIFY: validateFortifyCommand,
     RECRUIT: validateRecruitCommand,
+    DRILL_LEGION: validateDrillCommand,
+    SET_STANCE: validateSetStanceCommand,
     APPOINT_GENERAL: validateAppointGeneralCommand,
     NEGOTIATE: validateNegotiateCommand,
 };

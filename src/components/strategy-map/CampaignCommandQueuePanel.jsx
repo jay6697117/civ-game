@@ -15,6 +15,12 @@ const commandSummary = (command = {}) => {
     if (command.type === 'RECRUIT') {
         return `${payload.provinceId} 招募 ${payload.troops}`;
     }
+    if (command.type === 'DRILL_LEGION') {
+        return `${payload.legionId} 在 ${payload.provinceId} 操练`;
+    }
+    if (command.type === 'SET_STANCE') {
+        return `${payload.legionId} 姿态 -> ${payload.stance}`;
+    }
     return command.type || 'UNKNOWN';
 };
 

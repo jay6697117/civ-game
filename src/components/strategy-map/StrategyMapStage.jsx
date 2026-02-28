@@ -11,6 +11,13 @@ const countLegionsByProvince = (legions = []) => {
     return map;
 };
 
+const resolveLogisticsPressure = (province = {}) => {
+    const stockpileSupply = Number(province.stockpileSupply || 0);
+    if (stockpileSupply < 60) return 'LOW';
+    if (stockpileSupply < 120) return 'MEDIUM';
+    return 'HIGH';
+};
+
 export const StrategyMapStage = ({
     campaignState,
     selectedProvinceId,
@@ -47,6 +54,7 @@ export const StrategyMapStage = ({
                             isNeighborHighlighted={neighborSet.has(province.id)}
                             friendlyLegionCount={friendlyCountMap[province.id] || 0}
                             enemyLegionCount={enemyCountMap[province.id] || 0}
+                            logisticsPressure={resolveLogisticsPressure(province)}
                             onSelect={onSelectProvince}
                         />
                     );

@@ -14,9 +14,15 @@ export const ProvinceNode = ({
     isNeighborHighlighted = false,
     friendlyLegionCount = 0,
     enemyLegionCount = 0,
+    logisticsPressure = 'HIGH',
     onSelect,
 }) => {
     const colorClass = factionColors[ownerFaction?.tier] || 'bg-gray-700/80 border-gray-400/50';
+    const logisticsStyle = logisticsPressure === 'LOW'
+        ? 'bg-red-500/30 text-red-100'
+        : logisticsPressure === 'MEDIUM'
+            ? 'bg-amber-500/30 text-amber-100'
+            : 'bg-emerald-500/30 text-emerald-100';
 
     return (
         <button
@@ -35,6 +41,11 @@ export const ProvinceNode = ({
                 </div>
             </div>
             <div className="text-[10px] text-white/80 mt-0.5">归属：{ownerFaction?.name || '未知势力'}</div>
+            <div className="mt-1">
+                <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] ${logisticsStyle}`}>
+                    补给 {logisticsPressure}
+                </span>
+            </div>
         </button>
     );
 };

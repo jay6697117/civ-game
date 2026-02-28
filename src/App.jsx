@@ -1257,6 +1257,22 @@ function GameApp({ gameState }) {
                                         </div>
                                     </div>
                                 )}
+
+                                {Array.isArray(gameState.campaignState?.reportHistory) && gameState.campaignState.reportHistory.length > 0 && (
+                                    <div className="rounded-xl border border-indigo-500/30 bg-black/30 p-2.5 space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <h4 className="text-xs font-semibold text-indigo-200">最近战报</h4>
+                                            <span className="text-[11px] text-gray-400">最多 20 回合</span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {gameState.campaignState.reportHistory.slice(-5).reverse().map((report) => (
+                                                <div key={`report_${report.turn}_${report.resolvedAtDay}`} className="text-[11px] text-gray-300">
+                                                    • 回合 {report.turn}：战斗 {report.battleReports?.length || 0}，归属变更 {report.ownershipChanges?.length || 0}，后勤告警 {report.logisticsWarnings?.length || 0}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 

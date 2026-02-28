@@ -55,6 +55,10 @@ const buildProvinceState = (provinces = [], factions = []) => {
             publicOrder: 70,
             grainOutput: province.grainOutput ?? 120,
             taxOutput: province.taxOutput ?? 90,
+            stockpileGrain: Number.isFinite(province.stockpileGrain) ? province.stockpileGrain : 220,
+            stockpileSupply: Number.isFinite(province.stockpileSupply) ? province.stockpileSupply : 180,
+            garrisonRecoveryRate: Number.isFinite(province.garrisonRecoveryRate) ? province.garrisonRecoveryRate : 12,
+            siegeDays: Number.isFinite(province.siegeDays) ? province.siegeDays : 0,
             garrison: [{
                 id: `garrison_${province.id}_0`,
                 factionId: ownerFactionId,
@@ -98,6 +102,10 @@ const buildInitialLegionState = (factions = [], factionState = {}, provinceState
             mobility: 1,
             morale: 72,
             stance: 'BALANCED',
+            experience: 0,
+            level: 1,
+            fatigue: 0,
+            lastActionTurn: 0,
         };
         targetFaction.legions = [...(targetFaction.legions || []), legionId];
     });
@@ -111,9 +119,15 @@ const buildDefaultTurnReport = () => ({
     battleReports: [],
     recruitReports: [],
     fortifyReports: [],
+    drillReports: [],
+    stanceReports: [],
+    logisticsReports: [],
     supplyReports: [],
     diplomacyChanges: [],
     aiReports: [],
+    ownershipChanges: [],
+    topLosses: [],
+    logisticsWarnings: [],
     logs: [],
 });
 
@@ -154,9 +168,13 @@ export function buildInitialCampaignState({
             aiCommandCount: 0,
         },
         lastTurnReport: buildDefaultTurnReport(),
+        reportHistory: [],
         aiState: {
             lastResolvedTurn: 0,
             lastIssuedCommands: [],
+            threatMap: {},
+            objectiveByFaction: {},
+            lastFailedCommands: [],
         },
     };
 }
